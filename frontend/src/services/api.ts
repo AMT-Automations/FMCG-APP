@@ -61,6 +61,32 @@ class ApiService {
     return response.data;
   }
 
+  // Users (Admin only)
+  async getUsers() {
+    const response = await this.client.get('/users');
+    return response.data;
+  }
+
+  async createUser(data: { name: string; phone: string; pin: string; role: string }) {
+    const response = await this.client.post('/users', data);
+    return response.data;
+  }
+
+  async updateUser(userId: string, data: { name?: string; phone?: string; role?: string; is_active?: boolean }) {
+    const response = await this.client.put(`/users/${userId}`, data);
+    return response.data;
+  }
+
+  async deactivateUser(userId: string) {
+    const response = await this.client.delete(`/users/${userId}`);
+    return response.data;
+  }
+
+  async resetUserPin(userId: string, newPin: string) {
+    const response = await this.client.put(`/users/${userId}/reset-pin?new_pin=${newPin}`);
+    return response.data;
+  }
+
   // Customers
   async getCustomers(routeId?: string) {
     const params = routeId ? { route_id: routeId } : {};
@@ -68,14 +94,49 @@ class ApiService {
     return response.data;
   }
 
-  async createCustomer(data: { name: string; contact?: string; location?: string; payment_terms?: string; route_id?: string }) {
+  async getCustomer(customerId: string) {
+    const response = await this.client.get(`/customers/${customerId}`);
+    return response.data;
+  }
+
+  async createCustomer(data: { name: string; contact?: string; location?: string; payment_terms?: string; credit_limit?: number; route_id?: string }) {
     const response = await this.client.post('/customers', data);
+    return response.data;
+  }
+
+  async updateCustomer(customerId: string, data: { name?: string; contact?: string; location?: string; payment_terms?: string; credit_limit?: number; route_id?: string; is_active?: boolean }) {
+    const response = await this.client.put(`/customers/${customerId}`, data);
+    return response.data;
+  }
+
+  async deactivateCustomer(customerId: string) {
+    const response = await this.client.delete(`/customers/${customerId}`);
+    return response.data;
+  }
+
+  async getCustomerHistory(customerId: string, days: number = 30) {
+    const response = await this.client.get(`/customers/${customerId}/history`, { params: { days } });
     return response.data;
   }
 
   // Routes
   async getRoutes() {
     const response = await this.client.get('/routes');
+    return response.data;
+  }
+
+  async createRoute(data: { name: string; description?: string }) {
+    const response = await this.client.post('/routes', data);
+    return response.data;
+  }
+
+  async updateRoute(routeId: string, data: { name?: string; description?: string; assigned_driver_id?: string }) {
+    const response = await this.client.put(`/routes/${routeId}`, data);
+    return response.data;
+  }
+
+  async deleteRoute(routeId: string) {
+    const response = await this.client.delete(`/routes/${routeId}`);
     return response.data;
   }
 
@@ -100,16 +161,33 @@ class ApiService {
     cash_collected: number;
     payment_type?: string;
     notes?: string;
+    delivery_status?: string;
   }) {
     const response = await this.client.post('/sales', data);
     return response.data;
   }
 
-  async getSales(routeId?: string, dateStr?: string) {
+  async getSales(routeId?: string, dateStr?: string, customerId?: string) {
     const params: any = {};
     if (routeId) params.route_id = routeId;
     if (dateStr) params.date_str = dateStr;
+    if (customerId) params.customer_id = customerId;
     const response = await this.client.get('/sales', { params });
+    return response.data;
+  }
+
+  async getSale(saleId: string) {
+    const response = await this.client.get(`/sales/${saleId}`);
+    return response.data;
+  }
+
+  async updateSale(saleId: string, data: any) {
+    const response = await this.client.put(`/sales/${saleId}`, data);
+    return response.data;
+  }
+
+  async voidSale(saleId: string, reason: string) {
+    const response = await this.client.post(`/sales/${saleId}/void?reason=${encodeURIComponent(reason)}`);
     return response.data;
   }
 
@@ -124,6 +202,11 @@ class ApiService {
     return response.data;
   }
 
+  async updateDailyRoute(routeId: string, data: any) {
+    const response = await this.client.put(`/daily-routes/${routeId}`, data);
+    return response.data;
+  }
+
   async endDailyRoute(routeId: string, data: { closing_km: number; crates_in: number; damages_count?: number; fuel_used?: number; notes?: string }) {
     const response = await this.client.put(`/daily-routes/${routeId}/end`, data);
     return response.data;
@@ -134,8 +217,15 @@ class ApiService {
     return response.data;
   }
 
-  async getDailyRouteHistory() {
-    const response = await this.client.get('/daily-routes/history');
+  async getDailyRouteHistory(driverId?: string) {
+    const params = driverId ? { driver_id: driverId } : {};
+    const response = await this.client.get('/daily-routes/history', { params });
+    return response.data;
+  }
+
+  // Permissions
+  async getPermissions() {
+    const response = await this.client.get('/permissions');
     return response.data;
   }
 

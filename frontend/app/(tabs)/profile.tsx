@@ -53,6 +53,27 @@ export default function ProfileScreen() {
           <Text style={styles.phoneText}>{user?.phone}</Text>
         </View>
 
+        {/* Admin Section - Only for Admin/Manager */}
+        {(user?.role === 'admin' || user?.role === 'manager') && (
+          <View style={styles.menuSection}>
+            <Text style={styles.sectionTitle}>Administration</Text>
+            
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={() => router.push('/admin')}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: '#3B1E1E' }]}>
+                <Ionicons name="settings-outline" size={20} color="#EF4444" />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>Admin Dashboard</Text>
+                <Text style={styles.menuSubtitle}>Manage users, routes, customers</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Menu Items */}
         <View style={styles.menuSection}>
           <Text style={styles.sectionTitle}>Products & Inventory</Text>
