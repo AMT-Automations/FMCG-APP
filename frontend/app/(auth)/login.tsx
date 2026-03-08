@@ -30,6 +30,7 @@ export default function LoginScreen() {
   const router = useRouter();
 
   const handleSubmit = async () => {
+    console.log('handleSubmit called', { phone, pin, isLogin });
     if (!phone || !pin) {
       Alert.alert('Error', 'Please enter phone number and PIN');
       return;
@@ -45,15 +46,22 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
+      console.log('Attempting login...');
       if (isLogin) {
         await login(phone, pin);
+        console.log('Login successful, navigating...');
       } else {
         await register(name, phone, pin);
+        console.log('Registration successful, navigating...');
       }
-      router.replace('/(tabs)');
+      // Small delay to allow state to update, then navigate
+      setTimeout(() => {
+        console.log('Navigating to tabs...');
+        router.replace('/(tabs)');
+      }, 100);
     } catch (error: any) {
+      console.error('Login error:', error);
       Alert.alert('Error', error.message);
-    } finally {
       setLoading(false);
     }
   };
@@ -155,15 +163,17 @@ export default function LoginScreen() {
               />
             </View>
 
-            <Pressable
-              style={({ pressed }) => [
+            <TouchableOpacity
+              style={[
                 styles.submitButton, 
                 loading && styles.submitButtonDisabled,
-                pressed && { opacity: 0.8 }
               ]}
-              onPress={handleSubmit}
+              onPress={() => {
+                console.log('Sign In button pressed');
+                handleSubmit();
+              }}
               disabled={loading}
-              accessibilityRole="button"
+              activeOpacity={0.8}
             >
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" />
@@ -172,7 +182,7 @@ export default function LoginScreen() {
                   {isLogin ? 'Sign In' : 'Create Account'}
                 </Text>
               )}
-            </Pressable>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.switchButton}
