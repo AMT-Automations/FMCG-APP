@@ -129,6 +129,21 @@ backend:
         agent: "main"
         comment: "Products seeded with default FMCG items (bread, dairy, eggs)"
 
+  - task: "Vehicles API (CRUD + Seed)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "NEW: Vehicle management endpoints implemented - GET /vehicles, GET /vehicles/available, POST /vehicles, PUT /vehicles/{id}, DELETE /vehicles/{id}, POST /vehicles/seed. Tested via curl - all working."
+      - working: true
+        agent: "testing"
+        comment: "✅ COMPREHENSIVE VEHICLE API TESTING COMPLETE - All 8 vehicle management tests passed (100% success rate). Verified: 1) GET /vehicles returns all vehicles with proper structure, 2) GET /vehicles/available shows in_use status correctly, 3) POST /vehicles works for admin/manager (created test vehicle), 4) PUT /vehicles/{id} updates vehicle successfully, 5) DELETE /vehicles/{id} deactivates vehicle properly, 6) Driver unauthorized access correctly blocked (403), 7) Daily route start includes vehicle_id, vehicle_name, vehicle_registration, 8) Same vehicle cannot be used on multiple active routes (400 error). Vehicle availability tracking working perfectly - shows Truck 1 as in-use, others available."
+
   - task: "Routes API (CRUD + Seed)"
     implemented: true
     working: true
@@ -181,7 +196,13 @@ backend:
         comment: "Start/End route endpoints need testing"
       - working: true
         agent: "testing"
-        comment: "✅ COMPREHENSIVE TEST PASSED: Daily route management fully functional. Successfully tested complete workflow: POST /api/daily-routes/start with route_id, opening_km (12450.5), crates_out (50), and vehicle_check data. PUT /api/daily-routes/{id}/end with closing_km, crates_in, damages_count, fuel_used, and notes. Calculated KM traveled (129.8 km), updated sales counters, prevented duplicate route starts (400 error correctly returned). GET /api/daily-routes/active and /api/daily-routes/history endpoints working correctly."
+        comment: "✅ COMPREHENSIVE TEST PASSED: Daily route management fully functional."
+      - working: true
+        agent: "main"
+        comment: "UPDATED: Daily route start now requires vehicle_id and stores vehicle info (name, registration). Prevents same vehicle from being used on multiple active routes. Tested via curl - works correctly."
+      - working: true
+        agent: "testing"
+        comment: "✅ VEHICLE INTEGRATION VERIFIED: Daily route start with vehicle_id working perfectly. Route includes vehicle_id, vehicle_name, vehicle_registration in response. Vehicle in-use prevention working - returns 400 error when trying to use same vehicle on multiple active routes. Vehicle availability status correctly updated."
 
   - task: "Reports/Summary API"
     implemented: true
@@ -196,7 +217,7 @@ backend:
         comment: "Daily summary endpoint needs testing"
       - working: true
         agent: "testing"
-        comment: "✅ COMPREHENSIVE TEST PASSED: Reports and summary API fully functional. Successfully tested GET /api/reports/daily-summary endpoint with and without date_str parameter. Correctly aggregates data: routes completed (1), routes active (0), total sales (1), total collected (R162.00), collection rate (100%), total KM traveled (129.8), and product breakdown with delivered/returned/damages tracking. Properly handles date filtering and returns empty results for future dates. Authentication working correctly."
+        comment: "✅ COMPREHENSIVE TEST PASSED: Reports and summary API fully functional."
 
 frontend:
   - task: "Login Screen with PIN"
@@ -235,13 +256,37 @@ frontend:
     priority: "high"
     needs_retesting: true
 
-  - task: "Start/End Route Screens"
+  - task: "Start Route Screen with Vehicle Selection"
     implemented: true
     working: "NA"
     file: "/app/frontend/app/start-route.tsx"
     stuck_count: 0
     priority: "high"
     needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "UPDATED: Start route screen now includes vehicle selection dropdown. Shows available vehicles and marks in-use vehicles. Drivers must select a vehicle before starting a route."
+
+  - task: "End Route Screen"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/end-route.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+
+  - task: "Admin Dashboard with Vehicle Management"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/admin.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "UPDATED: Admin dashboard now includes Vehicles tab. Admins/Managers can add, edit, and deactivate vehicles. Modal form includes: name, registration number, vehicle type (truck/van/bakkie), and crate capacity."
 
   - task: "Reports Screen"
     implemented: true
@@ -270,3 +315,7 @@ agent_communication:
     message: "MVP implemented with login, route management, sales recording, and reports. Backend APIs tested via curl for auth, products, routes, customers. Need to test full sales and daily route flow."
   - agent: "testing"
     message: "✅ BACKEND TESTING COMPLETE - All critical backend APIs thoroughly tested and working perfectly. Sales Recording API, Daily Route Management API, and Reports/Summary API all passed comprehensive testing including authentication, data validation, error handling, and edge cases. Backend is ready for production. 100% success rate (11/11 tests passed). Demo credentials: phone=0812345678, pin=1234. All endpoints handle authentication correctly, prevent duplicate operations, and maintain data integrity."
+  - agent: "main"
+    message: "VEHICLE MANAGEMENT FEATURE IMPLEMENTED - Added complete vehicle management support. Backend: GET/POST/PUT/DELETE /api/vehicles, GET /api/vehicles/available (shows in-use status). Frontend: Start Route screen now requires vehicle selection, Admin Dashboard now includes Vehicles tab. Daily routes now store vehicle_id, vehicle_name, and vehicle_registration. Same vehicle cannot be used on multiple active routes simultaneously. All tested via curl - working correctly. Please test the new vehicle APIs."
+  - agent: "testing"
+    message: "✅ VEHICLE MANAGEMENT TESTING COMPLETE - All 8 vehicle API tests passed (100% success rate). Comprehensive testing verified: vehicle CRUD operations with proper admin/manager auth, vehicle availability tracking with in_use status, daily route integration with vehicle_id requirement, vehicle in-use prevention for concurrent routes, and unauthorized access blocking. Vehicle system fully functional and ready for production. Backend vehicle management APIs working perfectly with no critical issues found."

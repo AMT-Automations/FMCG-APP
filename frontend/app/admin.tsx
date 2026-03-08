@@ -9,7 +9,6 @@ import {
   Alert,
   Modal,
   TextInput,
-  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -18,14 +17,16 @@ import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/services/api';
 
 const ROLES = ['admin', 'manager', 'driver', 'conductor'];
+const VEHICLE_TYPES = ['truck', 'van', 'bakkie'];
 
 export default function AdminDashboard() {
   const router = useRouter();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'users' | 'routes' | 'customers'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'routes' | 'customers' | 'vehicles'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [routes, setRoutes] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -33,6 +34,7 @@ export default function AdminDashboard() {
   const [userModalVisible, setUserModalVisible] = useState(false);
   const [routeModalVisible, setRouteModalVisible] = useState(false);
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
+  const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
@@ -41,6 +43,9 @@ export default function AdminDashboard() {
   const [routeForm, setRouteForm] = useState({ name: '', description: '', assigned_driver_id: '' });
   const [customerForm, setCustomerForm] = useState({ 
     name: '', contact: '', location: '', payment_terms: 'cash', credit_limit: '', route_id: '' 
+  });
+  const [vehicleForm, setVehicleForm] = useState({
+    name: '', registration: '', vehicle_type: 'truck', capacity_crates: '100'
   });
 
   useEffect(() => {
@@ -54,14 +59,16 @@ export default function AdminDashboard() {
 
   const loadData = async () => {
     try {
-      const [usersData, routesData, customersData] = await Promise.all([
+      const [usersData, routesData, customersData, vehiclesData] = await Promise.all([
         user?.role === 'admin' ? api.getUsers() : Promise.resolve([]),
         api.getRoutes(),
         api.getCustomers(),
+        api.getVehicles(true), // Include inactive
       ]);
       setUsers(usersData);
       setRoutes(routesData);
       setCustomers(customersData);
+      setVehicles(vehiclesData);
       setDrivers(usersData.filter((u: any) => u.role === 'driver' && u.is_active !== false));
     } catch (error) {
       console.error('Error loading data:', error);
@@ -227,6 +234,74 @@ export default function AdminDashboard() {
     }
   };
 
+  // Vehicle Management
+  const openVehicleModal = (vehicleItem?: any) => {
+    if (vehicleItem) {
+      setEditingItem(vehicleItem);
+      setVehicleForm({
+        name: vehicleItem.name,
+        registration: vehicleItem.registration,
+        vehicle_type: vehicleItem.vehicle_type || 'truck',
+        capacity_crates: vehicleItem.capacity_crates?.toString() || '100',
+      });
+    } else {
+      setEditingItem(null);
+      setVehicleForm({ name: '', registration: '', vehicle_type: 'truck', capacity_crates: '100' });
+    }
+    setVehicleModalVisible(true);
+  };
+
+  const saveVehicle = async () => {
+    if (!vehicleForm.name || !vehicleForm.registration) {
+      Alert.alert('Error', 'Name and registration are required');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const data = {
+        ...vehicleForm,
+        capacity_crates: parseInt(vehicleForm.capacity_crates) || 100,
+      };
+      
+      if (editingItem) {
+        await api.updateVehicle(editingItem.id, data);
+      } else {
+        await api.createVehicle(data);
+      }
+      setVehicleModalVisible(false);
+      loadData();
+      Alert.alert('Success', editingItem ? 'Vehicle updated' : 'Vehicle added');
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to save vehicle');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deactivateVehicle = (vehicleItem: any) => {
+    Alert.alert(
+      'Deactivate Vehicle',
+      `Are you sure you want to deactivate ${vehicleItem.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deactivate',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.deactivateVehicle(vehicleItem.id);
+              loadData();
+              Alert.alert('Success', 'Vehicle deactivated');
+            } catch (error: any) {
+              Alert.alert('Error', error.response?.data?.detail || 'Failed to deactivate');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case 'admin': return '#EF4444';
@@ -234,6 +309,14 @@ export default function AdminDashboard() {
       case 'driver': return '#3B82F6';
       case 'conductor': return '#10B981';
       default: return '#64748B';
+    }
+  };
+
+  const getVehicleTypeIcon = (type: string) => {
+    switch (type) {
+      case 'van': return 'bus-outline';
+      case 'bakkie': return 'car-sport-outline';
+      default: return 'car-outline';
     }
   };
 
@@ -259,37 +342,48 @@ export default function AdminDashboard() {
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabs}>
-        {user?.role === 'admin' && (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer}>
+        <View style={styles.tabs}>
+          {user?.role === 'admin' && (
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'users' && styles.tabActive]}
+              onPress={() => setActiveTab('users')}
+            >
+              <Ionicons name="people" size={18} color={activeTab === 'users' ? '#3B82F6' : '#64748B'} />
+              <Text style={[styles.tabText, activeTab === 'users' && styles.tabTextActive]}>
+                Users ({users.filter(u => u.is_active !== false).length})
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'users' && styles.tabActive]}
-            onPress={() => setActiveTab('users')}
+            style={[styles.tab, activeTab === 'vehicles' && styles.tabActive]}
+            onPress={() => setActiveTab('vehicles')}
           >
-            <Ionicons name="people" size={20} color={activeTab === 'users' ? '#3B82F6' : '#64748B'} />
-            <Text style={[styles.tabText, activeTab === 'users' && styles.tabTextActive]}>
-              Users ({users.filter(u => u.is_active !== false).length})
+            <Ionicons name="car" size={18} color={activeTab === 'vehicles' ? '#3B82F6' : '#64748B'} />
+            <Text style={[styles.tabText, activeTab === 'vehicles' && styles.tabTextActive]}>
+              Vehicles ({vehicles.filter(v => v.is_active !== false).length})
             </Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'routes' && styles.tabActive]}
-          onPress={() => setActiveTab('routes')}
-        >
-          <Ionicons name="map" size={20} color={activeTab === 'routes' ? '#3B82F6' : '#64748B'} />
-          <Text style={[styles.tabText, activeTab === 'routes' && styles.tabTextActive]}>
-            Routes ({routes.length})
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'customers' && styles.tabActive]}
-          onPress={() => setActiveTab('customers')}
-        >
-          <Ionicons name="storefront" size={20} color={activeTab === 'customers' ? '#3B82F6' : '#64748B'} />
-          <Text style={[styles.tabText, activeTab === 'customers' && styles.tabTextActive]}>
-            Customers ({customers.length})
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'routes' && styles.tabActive]}
+            onPress={() => setActiveTab('routes')}
+          >
+            <Ionicons name="map" size={18} color={activeTab === 'routes' ? '#3B82F6' : '#64748B'} />
+            <Text style={[styles.tabText, activeTab === 'routes' && styles.tabTextActive]}>
+              Routes ({routes.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'customers' && styles.tabActive]}
+            onPress={() => setActiveTab('customers')}
+          >
+            <Ionicons name="storefront" size={18} color={activeTab === 'customers' ? '#3B82F6' : '#64748B'} />
+            <Text style={[styles.tabText, activeTab === 'customers' && styles.tabTextActive]}>
+              Customers ({customers.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
 
       {/* Content */}
       <ScrollView style={styles.content}>
@@ -334,6 +428,64 @@ export default function AdminDashboard() {
                     <TouchableOpacity 
                       style={styles.cardAction}
                       onPress={() => deactivateUser(u)}
+                    >
+                      <Ionicons name="close-circle" size={16} color="#EF4444" />
+                      <Text style={[styles.cardActionText, { color: '#EF4444' }]}>Deactivate</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Vehicles Tab */}
+        {activeTab === 'vehicles' && (
+          <View>
+            <TouchableOpacity style={styles.addButton} onPress={() => openVehicleModal()}>
+              <Ionicons name="add" size={20} color="#FFFFFF" />
+              <Text style={styles.addButtonText}>Add Vehicle</Text>
+            </TouchableOpacity>
+
+            {vehicles.map((v) => (
+              <TouchableOpacity
+                key={v.id}
+                style={[styles.card, v.is_active === false && styles.cardInactive]}
+                onPress={() => openVehicleModal(v)}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={[styles.cardIcon, { backgroundColor: '#1E3A5F' }]}>
+                    <Ionicons name={getVehicleTypeIcon(v.vehicle_type)} size={20} color="#3B82F6" />
+                  </View>
+                  <View style={styles.cardInfo}>
+                    <Text style={styles.cardTitle}>{v.name}</Text>
+                    <Text style={styles.cardSubtitle}>{v.registration}</Text>
+                  </View>
+                  <View style={[styles.typeBadge, { backgroundColor: '#1E3A5F' }]}>
+                    <Text style={styles.typeBadgeText}>{v.vehicle_type}</Text>
+                  </View>
+                </View>
+                <View style={styles.vehicleDetails}>
+                  <View style={styles.vehicleDetail}>
+                    <Ionicons name="cube-outline" size={14} color="#64748B" />
+                    <Text style={styles.vehicleDetailText}>{v.capacity_crates} crates capacity</Text>
+                  </View>
+                </View>
+                {v.is_active === false && (
+                  <Text style={styles.inactiveLabel}>INACTIVE</Text>
+                )}
+                <View style={styles.cardActions}>
+                  <TouchableOpacity 
+                    style={styles.cardAction}
+                    onPress={() => openVehicleModal(v)}
+                  >
+                    <Ionicons name="pencil" size={16} color="#3B82F6" />
+                    <Text style={styles.cardActionText}>Edit</Text>
+                  </TouchableOpacity>
+                  {v.is_active !== false && (
+                    <TouchableOpacity 
+                      style={styles.cardAction}
+                      onPress={() => deactivateVehicle(v)}
                     >
                       <Ionicons name="close-circle" size={16} color="#EF4444" />
                       <Text style={[styles.cardActionText, { color: '#EF4444' }]}>Deactivate</Text>
@@ -485,6 +637,82 @@ export default function AdminDashboard() {
             <TouchableOpacity
               style={[styles.saveButton, saving && styles.saveButtonDisabled]}
               onPress={saveUser}
+              disabled={saving}
+            >
+              {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveButtonText}>Save</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Vehicle Modal */}
+      <Modal visible={vehicleModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{editingItem ? 'Edit Vehicle' : 'Add Vehicle'}</Text>
+              <TouchableOpacity onPress={() => setVehicleModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Vehicle Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={vehicleForm.name}
+                  onChangeText={(t) => setVehicleForm({ ...vehicleForm, name: t })}
+                  placeholder="e.g., Truck 1, Van A"
+                  placeholderTextColor="#64748B"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Registration Number *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={vehicleForm.registration}
+                  onChangeText={(t) => setVehicleForm({ ...vehicleForm, registration: t.toUpperCase() })}
+                  placeholder="e.g., CA 123-456"
+                  placeholderTextColor="#64748B"
+                  autoCapitalize="characters"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Vehicle Type</Text>
+                <View style={styles.typeOptions}>
+                  {VEHICLE_TYPES.map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[styles.typeOption, vehicleForm.vehicle_type === type && styles.typeOptionActive]}
+                      onPress={() => setVehicleForm({ ...vehicleForm, vehicle_type: type })}
+                    >
+                      <Ionicons 
+                        name={getVehicleTypeIcon(type)} 
+                        size={20} 
+                        color={vehicleForm.vehicle_type === type ? '#FFFFFF' : '#64748B'} 
+                      />
+                      <Text style={[styles.typeOptionText, vehicleForm.vehicle_type === type && styles.typeOptionTextActive]}>
+                        {type}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Crate Capacity</Text>
+                <TextInput
+                  style={styles.input}
+                  value={vehicleForm.capacity_crates}
+                  onChangeText={(t) => setVehicleForm({ ...vehicleForm, capacity_crates: t.replace(/\D/g, '') })}
+                  placeholder="100"
+                  placeholderTextColor="#64748B"
+                  keyboardType="numeric"
+                />
+              </View>
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              onPress={saveVehicle}
               disabled={saving}
             >
               {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveButtonText}>Save</Text>}
@@ -678,8 +906,9 @@ const styles = StyleSheet.create({
   backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '600', color: '#FFFFFF' },
   placeholder: { width: 40 },
-  tabs: { flexDirection: 'row', padding: 8, backgroundColor: '#1E293B' },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 8, gap: 6 },
+  tabsContainer: { maxHeight: 56, backgroundColor: '#1E293B' },
+  tabs: { flexDirection: 'row', padding: 8, paddingRight: 16 },
+  tab: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, gap: 6, marginRight: 4 },
   tabActive: { backgroundColor: '#0F172A' },
   tabText: { fontSize: 12, color: '#64748B', fontWeight: '500' },
   tabTextActive: { color: '#3B82F6' },
@@ -702,9 +931,14 @@ const styles = StyleSheet.create({
   cardActionText: { fontSize: 12, color: '#3B82F6', fontWeight: '500' },
   roleBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   roleBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600', textTransform: 'uppercase' },
+  typeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  typeBadgeText: { color: '#3B82F6', fontSize: 10, fontWeight: '600', textTransform: 'uppercase' },
   balanceBadge: { backgroundColor: '#F59E0B', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   balanceText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
   inactiveLabel: { color: '#EF4444', fontSize: 10, fontWeight: '600', marginTop: 8 },
+  vehicleDetails: { marginTop: 8 },
+  vehicleDetail: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  vehicleDetailText: { fontSize: 12, color: '#64748B' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#1E293B', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#334155' },
@@ -718,6 +952,11 @@ const styles = StyleSheet.create({
   roleOptionActive: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
   roleOptionText: { color: '#94A3B8', fontSize: 14, textTransform: 'capitalize' },
   roleOptionTextActive: { color: '#FFFFFF', fontWeight: '600' },
+  typeOptions: { flexDirection: 'row', gap: 8 },
+  typeOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 8, backgroundColor: '#0F172A', borderWidth: 1, borderColor: '#334155' },
+  typeOptionActive: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
+  typeOptionText: { color: '#94A3B8', fontSize: 12, textTransform: 'capitalize' },
+  typeOptionTextActive: { color: '#FFFFFF', fontWeight: '600' },
   driverOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   driverOption: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, backgroundColor: '#0F172A', borderWidth: 1, borderColor: '#334155' },
   driverOptionActive: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },

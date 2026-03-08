@@ -197,7 +197,7 @@ class ApiService {
   }
 
   // Daily Routes
-  async startDailyRoute(data: { route_id: string; opening_km: number; crates_out: number; vehicle_check?: any }) {
+  async startDailyRoute(data: { route_id: string; vehicle_id: string; opening_km: number; crates_out: number; vehicle_check?: any }) {
     const response = await this.client.post('/daily-routes/start', data);
     return response.data;
   }
@@ -212,8 +212,13 @@ class ApiService {
     return response.data;
   }
 
-  async getActiveDailyRoute() {
+  async getActiveDailyRoutes() {
     const response = await this.client.get('/daily-routes/active');
+    return response.data;
+  }
+
+  async getAllActiveRoutes() {
+    const response = await this.client.get('/daily-routes/active/all');
     return response.data;
   }
 
@@ -238,6 +243,38 @@ class ApiService {
 
   async getRoutePerformance(routeId: string, days: number = 7) {
     const response = await this.client.get(`/reports/route-performance/${routeId}`, { params: { days } });
+    return response.data;
+  }
+
+  // Vehicles
+  async getVehicles(includeInactive: boolean = false) {
+    const params = includeInactive ? { include_inactive: true } : {};
+    const response = await this.client.get('/vehicles', { params });
+    return response.data;
+  }
+
+  async getAvailableVehicles() {
+    const response = await this.client.get('/vehicles/available');
+    return response.data;
+  }
+
+  async createVehicle(data: { registration: string; name: string; vehicle_type?: string; capacity_crates?: number }) {
+    const response = await this.client.post('/vehicles', data);
+    return response.data;
+  }
+
+  async updateVehicle(vehicleId: string, data: { registration?: string; name?: string; vehicle_type?: string; capacity_crates?: number; is_active?: boolean }) {
+    const response = await this.client.put(`/vehicles/${vehicleId}`, data);
+    return response.data;
+  }
+
+  async deactivateVehicle(vehicleId: string) {
+    const response = await this.client.delete(`/vehicles/${vehicleId}`);
+    return response.data;
+  }
+
+  async seedVehicles() {
+    const response = await this.client.post('/vehicles/seed');
     return response.data;
   }
 

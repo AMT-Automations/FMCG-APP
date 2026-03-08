@@ -23,25 +23,40 @@ interface Route {
   customer_count: number;
 }
 
+interface Vehicle {
+  id: string;
+  registration: string;
+  name: string;
+  vehicle_type: string;
+  capacity_crates: number;
+  in_use?: boolean;
+}
+
 export default function StartRouteScreen() {
   const router = useRouter();
   const [routes, setRoutes] = useState<Route[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [openingKm, setOpeningKm] = useState('');
   const [cratesOut, setCratesOut] = useState('');
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
 
   useEffect(() => {
-    loadRoutes();
+    loadData();
   }, []);
 
-  const loadRoutes = async () => {
+  const loadData = async () => {
     try {
-      const data = await api.getRoutes();
-      setRoutes(data);
+      const [routesData, vehiclesData] = await Promise.all([
+        api.getRoutes(),
+        api.getAvailableVehicles(),
+      ]);
+      setRoutes(routesData);
+      setVehicles(vehiclesData);
     } catch (error) {
-      console.error('Error loading routes:', error);
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -50,6 +65,10 @@ export default function StartRouteScreen() {
   const handleStart = async () => {
     if (!selectedRoute) {
       Alert.alert('Error', 'Please select a route');
+      return;
+    }
+    if (!selectedVehicle) {
+      Alert.alert('Error', 'Please select a vehicle');
       return;
     }
     if (!openingKm) {
@@ -65,6 +84,7 @@ export default function StartRouteScreen() {
     try {
       await api.startDailyRoute({
         route_id: selectedRoute.id,
+        vehicle_id: selectedVehicle.id,
         opening_km: parseFloat(openingKm),
         crates_out: parseInt(cratesOut),
       });
@@ -75,6 +95,9 @@ export default function StartRouteScreen() {
       setStarting(false);
     }
   };
+
+  const availableVehicles = vehicles.filter(v => !v.in_use);
+  const inUseVehicles = vehicles.filter(v => v.in_use);
 
   if (loading) {
     return (
@@ -140,9 +163,73 @@ export default function StartRouteScreen() {
             </View>
           </View>
 
+          {/* Vehicle Selection */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Select Vehicle</Text>
+            
+            {availableVehicles.length === 0 ? (
+              <View style={styles.noVehiclesCard}>
+                <Ionicons name="car-outline" size={32} color="#64748B" />
+                <Text style={styles.noVehiclesText}>No vehicles available</Text>
+                <Text style={styles.noVehiclesSubtext}>All vehicles are currently in use</Text>
+              </View>
+            ) : (
+              <View style={styles.vehicleList}>
+                {availableVehicles.map((vehicle) => (
+                  <TouchableOpacity
+                    key={vehicle.id}
+                    style={[
+                      styles.vehicleCard,
+                      selectedVehicle?.id === vehicle.id && styles.vehicleCardSelected,
+                    ]}
+                    onPress={() => setSelectedVehicle(vehicle)}
+                  >
+                    <View style={styles.vehicleIcon}>
+                      <Ionicons 
+                        name={vehicle.vehicle_type === 'van' ? 'bus-outline' : vehicle.vehicle_type === 'bakkie' ? 'car-sport-outline' : 'car-outline'} 
+                        size={24} 
+                        color={selectedVehicle?.id === vehicle.id ? '#3B82F6' : '#64748B'} 
+                      />
+                    </View>
+                    <View style={styles.vehicleInfo}>
+                      <Text style={styles.vehicleName}>{vehicle.name}</Text>
+                      <Text style={styles.vehicleReg}>{vehicle.registration}</Text>
+                      <View style={styles.vehicleMeta}>
+                        <Ionicons name="cube-outline" size={12} color="#64748B" />
+                        <Text style={styles.vehicleMetaText}>
+                          {vehicle.capacity_crates} crates capacity
+                        </Text>
+                      </View>
+                    </View>
+                    <View
+                      style={[
+                        styles.radioOuter,
+                        selectedVehicle?.id === vehicle.id && styles.radioOuterSelected,
+                      ]}
+                    >
+                      {selectedVehicle?.id === vehicle.id && <View style={styles.radioInner} />}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {inUseVehicles.length > 0 && (
+              <View style={styles.inUseSection}>
+                <Text style={styles.inUseTitle}>Currently In Use</Text>
+                {inUseVehicles.map((vehicle) => (
+                  <View key={vehicle.id} style={styles.inUseVehicle}>
+                    <Ionicons name="car-outline" size={16} color="#64748B" />
+                    <Text style={styles.inUseText}>{vehicle.name} ({vehicle.registration})</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
           {/* Vehicle Info */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Vehicle Information</Text>
+            <Text style={styles.sectionTitle}>Route Information</Text>
             
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Opening Kilometers</Text>
@@ -193,9 +280,12 @@ export default function StartRouteScreen() {
         {/* Start Button */}
         <View style={styles.footer}>
           <TouchableOpacity
-            style={[styles.startButton, starting && styles.startButtonDisabled]}
+            style={[
+              styles.startButton, 
+              (starting || !selectedRoute || !selectedVehicle) && styles.startButtonDisabled
+            ]}
             onPress={handleStart}
-            disabled={starting}
+            disabled={starting || !selectedRoute || !selectedVehicle}
           >
             {starting ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -336,6 +426,95 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#3B82F6',
   },
+  vehicleList: {
+    gap: 12,
+  },
+  vehicleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  vehicleCardSelected: {
+    borderColor: '#3B82F6',
+  },
+  vehicleIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  vehicleName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  vehicleReg: {
+    fontSize: 14,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  vehicleMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  vehicleMetaText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  noVehiclesCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderStyle: 'dashed',
+  },
+  noVehiclesText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#94A3B8',
+    marginTop: 12,
+  },
+  noVehiclesSubtext: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+  },
+  inUseSection: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
+  },
+  inUseTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 8,
+  },
+  inUseVehicle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  inUseText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
   inputGroup: {
     marginBottom: 16,
   },
@@ -410,7 +589,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   startButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.5,
   },
   startButtonText: {
     fontSize: 16,

@@ -143,6 +143,27 @@ class CustomerResponse(BaseModel):
     is_active: bool = True
     balance: float = 0.0
 
+class VehicleCreate(BaseModel):
+    registration: str  # License plate
+    name: str  # e.g., "Truck 1", "Van A"
+    vehicle_type: str = "truck"  # truck, van, bakkie
+    capacity_crates: int = 100
+
+class VehicleUpdate(BaseModel):
+    registration: Optional[str] = None
+    name: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    capacity_crates: Optional[int] = None
+    is_active: Optional[bool] = None
+
+class VehicleResponse(BaseModel):
+    id: str
+    registration: str
+    name: str
+    vehicle_type: str
+    capacity_crates: int
+    is_active: bool = True
+
 class RouteCreate(BaseModel):
     name: str
     description: Optional[str] = None
@@ -205,6 +226,7 @@ class SaleResponse(BaseModel):
 
 class DailyRouteStart(BaseModel):
     route_id: str
+    vehicle_id: str  # Required - which vehicle is being used
     opening_km: float
     crates_out: int
     vehicle_check: Optional[Dict[str, Any]] = None
@@ -229,6 +251,9 @@ class DailyRouteResponse(BaseModel):
     id: str
     route_id: str
     route_name: str
+    vehicle_id: Optional[str] = None
+    vehicle_name: Optional[str] = None
+    vehicle_registration: Optional[str] = None
     driver_id: str
     driver_name: str
     date: str
@@ -453,6 +478,102 @@ async def seed_products():
     await db.products.delete_many({})
     result = await db.products.insert_many(default_products)
     return {"message": f"Seeded {len(result.inserted_ids)} products"}
+
+# ==================== VEHICLE ENDPOINTS ====================
+
+@api_router.get("/vehicles", response_model=List[VehicleResponse])
+async def get_vehicles(include_inactive: bool = False):
+    query = {} if include_inactive else {"is_active": {"$ne": False}}
+    vehicles = await db.vehicles.find(query).to_list(100)
+    return [str_id(v) for v in vehicles]
+
+@api_router.get("/vehicles/available")
+async def get_available_vehicles():
+    """Get vehicles not currently in use on an active route"""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # Get all vehicles
+    all_vehicles = await db.vehicles.find({"is_active": {"$ne": False}}).to_list(100)
+    
+    # Get vehicles currently in use
+    active_routes = await db.daily_routes.find({
+        "date": today,
+        "status": "active"
+    }).to_list(100)
+    
+    in_use_vehicle_ids = {r.get("vehicle_id") for r in active_routes if r.get("vehicle_id")}
+    
+    available = []
+    for v in all_vehicles:
+        v = str_id(v)
+        v["in_use"] = v["id"] in in_use_vehicle_ids
+        available.append(v)
+    
+    return available
+
+@api_router.post("/vehicles", response_model=VehicleResponse)
+async def create_vehicle(vehicle: VehicleCreate, current_user: dict = Depends(get_current_user)):
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    # Check if registration already exists
+    existing = await db.vehicles.find_one({"registration": vehicle.registration})
+    if existing:
+        raise HTTPException(status_code=400, detail="Vehicle with this registration already exists")
+    
+    vehicle_doc = vehicle.dict()
+    vehicle_doc["is_active"] = True
+    vehicle_doc["created_at"] = datetime.utcnow()
+    
+    result = await db.vehicles.insert_one(vehicle_doc)
+    vehicle_doc["_id"] = result.inserted_id
+    return str_id(vehicle_doc)
+
+@api_router.put("/vehicles/{vehicle_id}", response_model=VehicleResponse)
+async def update_vehicle(vehicle_id: str, update: VehicleUpdate, current_user: dict = Depends(get_current_user)):
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    vehicle = await db.vehicles.find_one({"_id": ObjectId(vehicle_id)})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    update_data = {k: v for k, v in update.dict().items() if v is not None}
+    if update_data:
+        await db.vehicles.update_one({"_id": ObjectId(vehicle_id)}, {"$set": update_data})
+    
+    updated = await db.vehicles.find_one({"_id": ObjectId(vehicle_id)})
+    return str_id(updated)
+
+@api_router.delete("/vehicles/{vehicle_id}")
+async def deactivate_vehicle(vehicle_id: str, current_user: dict = Depends(get_current_user)):
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    vehicle = await db.vehicles.find_one({"_id": ObjectId(vehicle_id)})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
+    await db.vehicles.update_one({"_id": ObjectId(vehicle_id)}, {"$set": {"is_active": False}})
+    return {"message": "Vehicle deactivated successfully"}
+
+@api_router.post("/vehicles/seed")
+async def seed_vehicles():
+    """Seed sample vehicles"""
+    sample_vehicles = [
+        {"registration": "CA 123-456", "name": "Truck 1", "vehicle_type": "truck", "capacity_crates": 150},
+        {"registration": "CA 234-567", "name": "Truck 2", "vehicle_type": "truck", "capacity_crates": 150},
+        {"registration": "CA 345-678", "name": "Van A", "vehicle_type": "van", "capacity_crates": 80},
+        {"registration": "CA 456-789", "name": "Bakkie 1", "vehicle_type": "bakkie", "capacity_crates": 50},
+    ]
+    
+    for v in sample_vehicles:
+        v["is_active"] = True
+        v["created_at"] = datetime.utcnow()
+    
+    await db.vehicles.delete_many({})
+    result = await db.vehicles.insert_many(sample_vehicles)
+    return {"message": f"Seeded {len(result.inserted_ids)} vehicles"}
 
 # ==================== CUSTOMER ENDPOINTS ====================
 
@@ -846,23 +967,41 @@ async def get_customer_sales(customer_id: str):
 async def start_daily_route(data: DailyRouteStart, current_user: dict = Depends(get_current_user)):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     
-    # Check if already started today
+    # Check if THIS SPECIFIC ROUTE is already active today for this driver
     existing = await db.daily_routes.find_one({
         "driver_id": current_user["id"],
+        "route_id": data.route_id,
         "date": today,
         "status": "active"
     })
     if existing:
-        raise HTTPException(status_code=400, detail="You already have an active route today")
+        raise HTTPException(status_code=400, detail="This route is already active today")
+    
+    # Check if this vehicle is already in use
+    vehicle_in_use = await db.daily_routes.find_one({
+        "vehicle_id": data.vehicle_id,
+        "date": today,
+        "status": "active"
+    })
+    if vehicle_in_use:
+        raise HTTPException(status_code=400, detail="This vehicle is already in use on another route")
     
     # Get route name
     route = await db.routes.find_one({"_id": ObjectId(data.route_id)})
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
     
+    # Get vehicle info
+    vehicle = await db.vehicles.find_one({"_id": ObjectId(data.vehicle_id)})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    
     daily_route = {
         "route_id": data.route_id,
         "route_name": route["name"],
+        "vehicle_id": data.vehicle_id,
+        "vehicle_name": vehicle["name"],
+        "vehicle_registration": vehicle["registration"],
         "driver_id": current_user["id"],
         "driver_name": current_user["name"],
         "date": today,
@@ -946,17 +1085,34 @@ async def end_daily_route(route_id: str, data: DailyRouteEnd, current_user: dict
     daily_route.update(update_data)
     return str_id(daily_route)
 
-@api_router.get("/daily-routes/active", response_model=Optional[DailyRouteResponse])
-async def get_active_daily_route(current_user: dict = Depends(get_current_user)):
+@api_router.get("/daily-routes/active", response_model=List[DailyRouteResponse])
+async def get_active_daily_routes(current_user: dict = Depends(get_current_user)):
+    """Get all active routes for the current driver (supports multiple concurrent routes)"""
     today = datetime.utcnow().strftime("%Y-%m-%d")
-    daily_route = await db.daily_routes.find_one({
-        "driver_id": current_user["id"],
+    query = {
         "date": today,
         "status": "active"
-    })
-    if daily_route:
-        return str_id(daily_route)
-    return None
+    }
+    
+    # Drivers see only their own routes, admin/manager see all
+    if current_user["role"] not in ["admin", "manager"]:
+        query["driver_id"] = current_user["id"]
+    
+    daily_routes = await db.daily_routes.find(query).to_list(50)
+    return [str_id(dr) for dr in daily_routes]
+
+@api_router.get("/daily-routes/active/all", response_model=List[DailyRouteResponse])
+async def get_all_active_routes(current_user: dict = Depends(get_current_user)):
+    """Get all active routes across all drivers (Admin/Manager view)"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    daily_routes = await db.daily_routes.find({
+        "date": today,
+        "status": "active"
+    }).to_list(100)
+    return [str_id(dr) for dr in daily_routes]
 
 @api_router.get("/daily-routes/history", response_model=List[DailyRouteResponse])
 async def get_daily_route_history(
@@ -1089,6 +1245,9 @@ async def seed_all_data():
     
     # Seed products
     await seed_products()
+    
+    # Seed vehicles
+    await seed_vehicles()
     
     # Seed customers
     await seed_customers()

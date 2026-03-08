@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 
 # Configuration
-BASE_URL = "https://route-sales-tracker.preview.emergentagent.com/api"
+BASE_URL = "https://vehicle-route-hub.preview.emergentagent.com/api"
 DEMO_PHONE = "0812345678"
 DEMO_PIN = "1234"
 

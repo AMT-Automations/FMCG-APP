@@ -62,15 +62,16 @@ export default function LoginScreen() {
     setSeeding(true);
     try {
       const result = await api.seedAll();
+      const demoLogin = result.demo_logins?.driver || result.demo_login || { phone: '0812345678', pin: '1234' };
       Alert.alert(
         'Success',
-        `Sample data created!\n\nDemo Login:\nPhone: ${result.demo_login.phone}\nPIN: ${result.demo_login.pin}`,
+        `Sample data created!\n\nDemo Driver Login:\nPhone: ${demoLogin.phone}\nPIN: ${demoLogin.pin}`,
         [
           {
             text: 'Use Demo Login',
             onPress: () => {
-              setPhone(result.demo_login.phone);
-              setPin(result.demo_login.pin);
+              setPhone(demoLogin.phone);
+              setPin(demoLogin.pin);
             },
           },
           { text: 'OK' },

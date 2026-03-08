@@ -17,21 +17,22 @@ import { api } from '../../src/services/api';
 export default function HomeScreen() {
   const { user } = useAuth();
   const router = useRouter();
-  const [activeRoute, setActiveRoute] = useState<any>(null);
+  const [activeRoutes, setActiveRoutes] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = async () => {
     try {
-      const [activeRouteData, summaryData] = await Promise.all([
-        api.getActiveDailyRoute(),
+      const [activeRoutesData, summaryData] = await Promise.all([
+        api.getActiveDailyRoutes(),
         api.getDailySummary(),
       ]);
-      setActiveRoute(activeRouteData);
+      setActiveRoutes(activeRoutesData || []);
       setSummary(summaryData);
     } catch (error) {
       console.error('Error loading home data:', error);
+      setActiveRoutes([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -60,6 +61,14 @@ export default function HomeScreen() {
     return 'Good Evening';
   };
 
+  const handleSelectRoute = (route: any) => {
+    // Navigate to route tab with selected route
+    router.push({
+      pathname: '/(tabs)/route',
+      params: { selectedRouteId: route.id, routeId: route.route_id }
+    });
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -69,6 +78,9 @@ export default function HomeScreen() {
       </SafeAreaView>
     );
   }
+
+  const totalSales = activeRoutes.reduce((sum, r) => sum + (r.sales_count || 0), 0);
+  const totalCollected = activeRoutes.reduce((sum, r) => sum + (r.total_collected || 0), 0);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -90,53 +102,90 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Active Route Card */}
-        {activeRoute ? (
-          <View style={styles.activeRouteCard}>
-            <View style={styles.activeRouteHeader}>
-              <View style={styles.activeIndicator}>
-                <View style={styles.activeDot} />
-                <Text style={styles.activeText}>ACTIVE ROUTE</Text>
+        {/* Active Routes Section */}
+        {activeRoutes.length > 0 ? (
+          <View style={styles.activeRoutesSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Active Routes ({activeRoutes.length})</Text>
+              <View style={styles.liveIndicator}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>LIVE</Text>
               </View>
+            </View>
+
+            {activeRoutes.map((route, index) => (
               <TouchableOpacity
-                style={styles.endRouteButton}
-                onPress={() => router.push('/end-route')}
+                key={route.id}
+                style={styles.activeRouteCard}
+                onPress={() => handleSelectRoute(route)}
               >
-                <Text style={styles.endRouteText}>End Route</Text>
+                <View style={styles.routeHeader}>
+                  <View style={styles.routeIndex}>
+                    <Text style={styles.routeIndexText}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.routeInfo}>
+                    <Text style={styles.routeName}>{route.route_name}</Text>
+                    <Text style={styles.routeDriver}>
+                      {route.driver_name}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.endRouteButton}
+                    onPress={() => router.push({ pathname: '/end-route', params: { routeId: route.id } })}
+                  >
+                    <Text style={styles.endRouteText}>End</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.routeStats}>
+                  <View style={styles.routeStat}>
+                    <Ionicons name="speedometer-outline" size={16} color="#94A3B8" />
+                    <Text style={styles.routeStatValue}>{route.opening_km} km</Text>
+                  </View>
+                  <View style={styles.routeStat}>
+                    <Ionicons name="cube-outline" size={16} color="#94A3B8" />
+                    <Text style={styles.routeStatValue}>{route.crates_out} crates</Text>
+                  </View>
+                  <View style={styles.routeStat}>
+                    <Ionicons name="receipt-outline" size={16} color="#94A3B8" />
+                    <Text style={styles.routeStatValue}>{route.sales_count} sales</Text>
+                  </View>
+                  <View style={styles.routeStat}>
+                    <Ionicons name="cash-outline" size={16} color="#10B981" />
+                    <Text style={[styles.routeStatValue, { color: '#10B981' }]}>
+                      {formatCurrency(route.total_collected)}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.continueButton}
+                  onPress={() => handleSelectRoute(route)}
+                >
+                  <Ionicons name="navigate" size={18} color="#FFFFFF" />
+                  <Text style={styles.continueButtonText}>Continue Route</Text>
+                </TouchableOpacity>
               </TouchableOpacity>
-            </View>
-            <Text style={styles.routeName}>{activeRoute.route_name}</Text>
-            <View style={styles.routeStats}>
-              <View style={styles.routeStat}>
-                <Ionicons name="speedometer-outline" size={20} color="#94A3B8" />
-                <Text style={styles.routeStatValue}>{activeRoute.opening_km} km</Text>
-                <Text style={styles.routeStatLabel}>Start KM</Text>
+            ))}
+
+            {/* Combined Stats for All Active Routes */}
+            {activeRoutes.length > 1 && (
+              <View style={styles.combinedStats}>
+                <Text style={styles.combinedStatsTitle}>All Routes Combined</Text>
+                <View style={styles.combinedStatsRow}>
+                  <View style={styles.combinedStat}>
+                    <Text style={styles.combinedStatValue}>{totalSales}</Text>
+                    <Text style={styles.combinedStatLabel}>Total Sales</Text>
+                  </View>
+                  <View style={styles.combinedStat}>
+                    <Text style={[styles.combinedStatValue, { color: '#10B981' }]}>
+                      {formatCurrency(totalCollected)}
+                    </Text>
+                    <Text style={styles.combinedStatLabel}>Total Collected</Text>
+                  </View>
+                </View>
               </View>
-              <View style={styles.routeStat}>
-                <Ionicons name="cube-outline" size={20} color="#94A3B8" />
-                <Text style={styles.routeStatValue}>{activeRoute.crates_out}</Text>
-                <Text style={styles.routeStatLabel}>Crates Out</Text>
-              </View>
-              <View style={styles.routeStat}>
-                <Ionicons name="receipt-outline" size={20} color="#94A3B8" />
-                <Text style={styles.routeStatValue}>{activeRoute.sales_count}</Text>
-                <Text style={styles.routeStatLabel}>Sales</Text>
-              </View>
-              <View style={styles.routeStat}>
-                <Ionicons name="cash-outline" size={20} color="#10B981" />
-                <Text style={[styles.routeStatValue, { color: '#10B981' }]}>
-                  {formatCurrency(activeRoute.total_collected)}
-                </Text>
-                <Text style={styles.routeStatLabel}>Collected</Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              style={styles.continueButton}
-              onPress={() => router.push('/(tabs)/route')}
-            >
-              <Ionicons name="navigate" size={20} color="#FFFFFF" />
-              <Text style={styles.continueButtonText}>Continue Route</Text>
-            </TouchableOpacity>
+            )}
           </View>
         ) : (
           <TouchableOpacity
@@ -154,6 +203,17 @@ export default function HomeScreen() {
               <Ionicons name="add" size={20} color="#FFFFFF" />
               <Text style={styles.startRouteButtonText}>Start Route</Text>
             </View>
+          </TouchableOpacity>
+        )}
+
+        {/* Add Another Route Button */}
+        {activeRoutes.length > 0 && (
+          <TouchableOpacity
+            style={styles.addRouteButton}
+            onPress={() => router.push('/start-route')}
+          >
+            <Ionicons name="add-circle-outline" size={24} color="#3B82F6" />
+            <Text style={styles.addRouteText}>Start Another Route</Text>
           </TouchableOpacity>
         )}
 
@@ -270,35 +330,79 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  activeRouteCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#10B981',
+  activeRoutesSection: {
+    marginBottom: 16,
   },
-  activeRouteHeader: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  activeIndicator: {
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  liveIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  activeDot: {
+  liveDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#10B981',
-    marginRight: 8,
+    marginRight: 6,
   },
-  activeText: {
+  liveText: {
     color: '#10B981',
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  activeRouteCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  routeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  routeIndex: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routeIndexText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  routeInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  routeName: {
+    fontSize: 16,
     fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  routeDriver: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
   },
   endRouteButton: {
     backgroundColor: 'rgba(239, 68, 68, 0.2)',
@@ -311,44 +415,81 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  routeName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 16,
-  },
   routeStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   routeStat: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
   routeStatValue: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 12,
     color: '#FFFFFF',
-    marginTop: 4,
-  },
-  routeStatLabel: {
-    fontSize: 10,
-    color: '#64748B',
-    marginTop: 2,
+    fontWeight: '500',
   },
   continueButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#3B82F6',
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 10,
+    paddingVertical: 12,
+    gap: 8,
   },
   continueButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    marginLeft: 8,
+  },
+  combinedStats: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 4,
+  },
+  combinedStatsTitle: {
+    fontSize: 14,
+    color: '#64748B',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  combinedStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  combinedStat: {
+    alignItems: 'center',
+  },
+  combinedStatValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  combinedStatLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+  },
+  addRouteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 24,
+    gap: 8,
+  },
+  addRouteText: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: '600',
   },
   startRouteCard: {
     backgroundColor: '#1E293B',
@@ -392,16 +533,11 @@ const styles = StyleSheet.create({
   summarySection: {
     marginBottom: 24,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 16,
-  },
   summaryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+    marginTop: 12,
   },
   summaryCard: {
     flex: 1,
@@ -428,6 +564,7 @@ const styles = StyleSheet.create({
   actionsGrid: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 12,
   },
   actionCard: {
     flex: 1,
