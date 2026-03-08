@@ -51,6 +51,16 @@ class ApiService {
     return response.data;
   }
 
+  async updateProduct(productId: string, data: { name: string; category: string; unit_type: string; price: number }) {
+    const response = await this.client.put(`/products/${productId}`, data);
+    return response.data;
+  }
+
+  async deleteProduct(productId: string) {
+    const response = await this.client.delete(`/products/${productId}`);
+    return response.data;
+  }
+
   // Customers
   async getCustomers(routeId?: string) {
     const params = routeId ? { route_id: routeId } : {};

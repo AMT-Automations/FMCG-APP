@@ -253,6 +253,29 @@ async def create_product(product: ProductCreate):
     product_doc["_id"] = result.inserted_id
     return str_id(product_doc)
 
+@api_router.put("/products/{product_id}", response_model=ProductResponse)
+async def update_product(product_id: str, product: ProductCreate):
+    """Update an existing product"""
+    existing = await db.products.find_one({"_id": ObjectId(product_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    update_data = product.dict()
+    await db.products.update_one({"_id": ObjectId(product_id)}, {"$set": update_data})
+    
+    updated = await db.products.find_one({"_id": ObjectId(product_id)})
+    return str_id(updated)
+
+@api_router.delete("/products/{product_id}")
+async def delete_product(product_id: str):
+    """Delete a product"""
+    existing = await db.products.find_one({"_id": ObjectId(product_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    await db.products.delete_one({"_id": ObjectId(product_id)})
+    return {"message": "Product deleted successfully"}
+
 @api_router.post("/products/seed")
 async def seed_products():
     """Seed default products"""

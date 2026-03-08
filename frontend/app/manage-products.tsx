@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   TextInput,
   ActivityIndicator,
   Alert,
@@ -36,9 +35,10 @@ export default function ManageProductsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   
-  // New product form
-  const [newProduct, setNewProduct] = useState({
+  // Product form
+  const [productForm, setProductForm] = useState({
     name: '',
     category: 'Other',
     unit_type: 'units',
@@ -60,34 +60,85 @@ export default function ManageProductsScreen() {
     }
   };
 
-  const handleAddProduct = async () => {
-    if (!newProduct.name.trim()) {
+  const openAddModal = () => {
+    setEditingProduct(null);
+    setProductForm({ name: '', category: 'Other', unit_type: 'units', price: '' });
+    setModalVisible(true);
+  };
+
+  const openEditModal = (product: Product) => {
+    setEditingProduct(product);
+    setProductForm({
+      name: product.name,
+      category: product.category,
+      unit_type: product.unit_type,
+      price: product.price.toString(),
+    });
+    setModalVisible(true);
+  };
+
+  const handleSaveProduct = async () => {
+    if (!productForm.name.trim()) {
       Alert.alert('Error', 'Product name is required');
       return;
     }
-    if (!newProduct.price || parseFloat(newProduct.price) <= 0) {
+    if (!productForm.price || parseFloat(productForm.price) <= 0) {
       Alert.alert('Error', 'Please enter a valid price');
       return;
     }
 
     setSaving(true);
     try {
-      const created = await api.createProduct({
-        name: newProduct.name.trim(),
-        category: newProduct.category,
-        unit_type: newProduct.unit_type,
-        price: parseFloat(newProduct.price),
-      });
+      const productData = {
+        name: productForm.name.trim(),
+        category: productForm.category,
+        unit_type: productForm.unit_type,
+        price: parseFloat(productForm.price),
+      };
+
+      if (editingProduct) {
+        // Update existing product
+        const updated = await api.updateProduct(editingProduct.id, productData);
+        setProducts(products.map(p => p.id === editingProduct.id ? updated : p));
+        Alert.alert('Success', `${updated.name} updated successfully!`);
+      } else {
+        // Create new product
+        const created = await api.createProduct(productData);
+        setProducts([...products, created]);
+        Alert.alert('Success', `${created.name} added to products!`);
+      }
       
-      setProducts([...products, created]);
       setModalVisible(false);
-      setNewProduct({ name: '', category: 'Other', unit_type: 'units', price: '' });
-      Alert.alert('Success', `${created.name} added to products!`);
+      setEditingProduct(null);
+      setProductForm({ name: '', category: 'Other', unit_type: 'units', price: '' });
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to add product');
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to save product');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDeleteProduct = (product: Product) => {
+    Alert.alert(
+      'Delete Product',
+      `Are you sure you want to delete "${product.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.deleteProduct(product.id);
+              setProducts(products.filter(p => p.id !== product.id));
+              Alert.alert('Success', 'Product deleted successfully');
+            } catch (error: any) {
+              Alert.alert('Error', error.response?.data?.detail || 'Failed to delete product');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const filteredProducts = products.filter(
@@ -103,18 +154,6 @@ export default function ManageProductsScreen() {
     acc[product.category].push(product);
     return acc;
   }, {});
-
-  const renderProduct = ({ item }: { item: Product }) => (
-    <View style={styles.productCard}>
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.name}</Text>
-        <Text style={styles.productMeta}>
-          {item.unit_type} • {item.category}
-        </Text>
-      </View>
-      <Text style={styles.productPrice}>R {item.price.toFixed(2)}</Text>
-    </View>
-  );
 
   if (loading) {
     return (
@@ -136,7 +175,7 @@ export default function ManageProductsScreen() {
         <Text style={styles.headerTitle}>Manage Products</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => setModalVisible(true)}
+          onPress={openAddModal}
         >
           <Ionicons name="add" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -164,6 +203,7 @@ export default function ManageProductsScreen() {
         <Text style={styles.countText}>
           {filteredProducts.length} products available
         </Text>
+        <Text style={styles.hintText}>Tap to edit • Long press to delete</Text>
       </View>
 
       {/* Products List */}
@@ -177,15 +217,24 @@ export default function ManageProductsScreen() {
               </View>
             </View>
             {categoryProducts.map((product) => (
-              <View key={product.id} style={styles.productCard}>
+              <TouchableOpacity
+                key={product.id}
+                style={styles.productCard}
+                onPress={() => openEditModal(product)}
+                onLongPress={() => handleDeleteProduct(product)}
+                delayLongPress={500}
+              >
                 <View style={styles.productInfo}>
                   <Text style={styles.productName}>{product.name}</Text>
                   <Text style={styles.productMeta}>
                     Per {product.unit_type}
                   </Text>
                 </View>
-                <Text style={styles.productPrice}>R {product.price.toFixed(2)}</Text>
-              </View>
+                <View style={styles.productActions}>
+                  <Text style={styles.productPrice}>R {product.price.toFixed(2)}</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#64748B" />
+                </View>
+              </TouchableOpacity>
             ))}
           </View>
         ))}
@@ -196,7 +245,7 @@ export default function ManageProductsScreen() {
             <Text style={styles.emptyText}>No products found</Text>
             <TouchableOpacity
               style={styles.addFirstButton}
-              onPress={() => setModalVisible(true)}
+              onPress={openAddModal}
             >
               <Ionicons name="add" size={20} color="#FFFFFF" />
               <Text style={styles.addFirstButtonText}>Add Product</Text>
@@ -208,12 +257,12 @@ export default function ManageProductsScreen() {
       {/* Floating Add Button */}
       <TouchableOpacity
         style={styles.floatingButton}
-        onPress={() => setModalVisible(true)}
+        onPress={openAddModal}
       >
         <Ionicons name="add" size={28} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Add Product Modal */}
+      {/* Add/Edit Product Modal */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -226,7 +275,9 @@ export default function ManageProductsScreen() {
         >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add New Product</Text>
+              <Text style={styles.modalTitle}>
+                {editingProduct ? 'Edit Product' : 'Add New Product'}
+              </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#94A3B8" />
               </TouchableOpacity>
@@ -240,8 +291,8 @@ export default function ManageProductsScreen() {
                   style={styles.input}
                   placeholder="e.g., Milk 2L, Chips 150g"
                   placeholderTextColor="#64748B"
-                  value={newProduct.name}
-                  onChangeText={(text) => setNewProduct({ ...newProduct, name: text })}
+                  value={productForm.name}
+                  onChangeText={(text) => setProductForm({ ...productForm, name: text })}
                 />
               </View>
 
@@ -254,14 +305,14 @@ export default function ManageProductsScreen() {
                       key={cat}
                       style={[
                         styles.optionButton,
-                        newProduct.category === cat && styles.optionButtonActive,
+                        productForm.category === cat && styles.optionButtonActive,
                       ]}
-                      onPress={() => setNewProduct({ ...newProduct, category: cat })}
+                      onPress={() => setProductForm({ ...productForm, category: cat })}
                     >
                       <Text
                         style={[
                           styles.optionText,
-                          newProduct.category === cat && styles.optionTextActive,
+                          productForm.category === cat && styles.optionTextActive,
                         ]}
                       >
                         {cat}
@@ -280,14 +331,14 @@ export default function ManageProductsScreen() {
                       key={unit}
                       style={[
                         styles.optionButton,
-                        newProduct.unit_type === unit && styles.optionButtonActive,
+                        productForm.unit_type === unit && styles.optionButtonActive,
                       ]}
-                      onPress={() => setNewProduct({ ...newProduct, unit_type: unit })}
+                      onPress={() => setProductForm({ ...productForm, unit_type: unit })}
                     >
                       <Text
                         style={[
                           styles.optionText,
-                          newProduct.unit_type === unit && styles.optionTextActive,
+                          productForm.unit_type === unit && styles.optionTextActive,
                         ]}
                       >
                         {unit}
@@ -306,37 +357,51 @@ export default function ManageProductsScreen() {
                     style={styles.priceInput}
                     placeholder="0.00"
                     placeholderTextColor="#64748B"
-                    value={newProduct.price}
-                    onChangeText={(text) => setNewProduct({ ...newProduct, price: text.replace(/[^0-9.]/g, '') })}
+                    value={productForm.price}
+                    onChangeText={(text) => setProductForm({ ...productForm, price: text.replace(/[^0-9.]/g, '') })}
                     keyboardType="numeric"
                   />
-                  <Text style={styles.unitSuffix}>per {newProduct.unit_type}</Text>
+                  <Text style={styles.unitSuffix}>per {productForm.unit_type}</Text>
                 </View>
               </View>
 
               {/* Preview */}
-              {newProduct.name && newProduct.price && (
+              {productForm.name && productForm.price && (
                 <View style={styles.previewCard}>
                   <Text style={styles.previewLabel}>Preview</Text>
                   <View style={styles.previewContent}>
                     <View>
-                      <Text style={styles.previewName}>{newProduct.name}</Text>
+                      <Text style={styles.previewName}>{productForm.name}</Text>
                       <Text style={styles.previewMeta}>
-                        {newProduct.category} • Per {newProduct.unit_type}
+                        {productForm.category} • Per {productForm.unit_type}
                       </Text>
                     </View>
                     <Text style={styles.previewPrice}>
-                      R {parseFloat(newProduct.price || '0').toFixed(2)}
+                      R {parseFloat(productForm.price || '0').toFixed(2)}
                     </Text>
                   </View>
                 </View>
+              )}
+
+              {/* Delete Button for Edit Mode */}
+              {editingProduct && (
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => {
+                    setModalVisible(false);
+                    handleDeleteProduct(editingProduct);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                  <Text style={styles.deleteButtonText}>Delete Product</Text>
+                </TouchableOpacity>
               )}
             </ScrollView>
 
             {/* Save Button */}
             <TouchableOpacity
               style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-              onPress={handleAddProduct}
+              onPress={handleSaveProduct}
               disabled={saving}
             >
               {saving ? (
@@ -344,7 +409,9 @@ export default function ManageProductsScreen() {
               ) : (
                 <>
                   <Ionicons name="checkmark" size={20} color="#FFFFFF" />
-                  <Text style={styles.saveButtonText}>Add Product</Text>
+                  <Text style={styles.saveButtonText}>
+                    {editingProduct ? 'Save Changes' : 'Add Product'}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -409,12 +476,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   countContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
   countText: {
     fontSize: 12,
     color: '#64748B',
+  },
+  hintText: {
+    fontSize: 11,
+    color: '#475569',
+    fontStyle: 'italic',
   },
   scrollView: {
     flex: 1,
@@ -470,6 +545,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     marginTop: 4,
+  },
+  productActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   productPrice: {
     fontSize: 16,
@@ -639,6 +719,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#10B981',
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 16,
+    gap: 8,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444',
   },
   saveButton: {
     flexDirection: 'row',
