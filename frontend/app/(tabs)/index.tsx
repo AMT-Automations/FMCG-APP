@@ -137,6 +137,16 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 </View>
 
+                {/* Vehicle Info */}
+                {route.vehicle_name && (
+                  <View style={styles.vehicleInfo}>
+                    <Ionicons name="car" size={16} color="#3B82F6" />
+                    <Text style={styles.vehicleInfoText}>
+                      {route.vehicle_name} • {route.vehicle_registration}
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.routeStats}>
                   <View style={styles.routeStat}>
                     <Ionicons name="speedometer-outline" size={16} color="#94A3B8" />
@@ -403,6 +413,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#94A3B8',
     marginTop: 2,
+  },
+  vehicleInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  vehicleInfoText: {
+    fontSize: 13,
+    color: '#3B82F6',
+    fontWeight: '500',
   },
   endRouteButton: {
     backgroundColor: 'rgba(239, 68, 68, 0.2)',
