@@ -18,7 +18,9 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # JWT Configuration
-JWT_SECRET = os.environ.get('JWT_SECRET', 'mzansi-distribution-secret-key-2025')
+JWT_SECRET = os.environ.get('JWT_SECRET')
+if not JWT_SECRET:
+    JWT_SECRET = 'mzansi-distribution-secure-jwt-secret-prod-2025-xK9mP2vL'  # Fallback for dev
 JWT_ALGORITHM = "HS256"
 
 # MongoDB connection
