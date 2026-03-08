@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -150,10 +151,15 @@ export default function LoginScreen() {
               />
             </View>
 
-            <TouchableOpacity
-              style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+            <Pressable
+              style={({ pressed }) => [
+                styles.submitButton, 
+                loading && styles.submitButtonDisabled,
+                pressed && { opacity: 0.8 }
+              ]}
               onPress={handleSubmit}
               disabled={loading}
+              accessibilityRole="button"
             >
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" />
@@ -162,7 +168,7 @@ export default function LoginScreen() {
                   {isLogin ? 'Sign In' : 'Create Account'}
                 </Text>
               )}
-            </TouchableOpacity>
+            </Pressable>
 
             <TouchableOpacity
               style={styles.switchButton}
