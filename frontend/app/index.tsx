@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
 
@@ -20,10 +20,12 @@ export default function Index() {
   return (
     <View style={styles.container}>
       <View style={styles.logoContainer}>
-        <View style={styles.iconCircle}>
-          <Text style={styles.iconText}>🚛</Text>
-        </View>
-        <Text style={styles.title}>Mzansi</Text>
+        <Image
+          source={require('../assets/logo.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Text style={styles.tagline}>UMOJA NI NGUVU</Text>
         <Text style={styles.subtitle}>Distribution Tracker</Text>
       </View>
       <ActivityIndicator size="large" color="#3B82F6" style={styles.loader} />
@@ -34,34 +36,28 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
   },
   logoContainer: {
     alignItems: 'center',
   },
-  iconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#1E3A5F',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
+  logo: {
+    width: 200,
+    height: 150,
+    marginBottom: 16,
   },
-  iconText: {
-    fontSize: 48,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+  tagline: {
+    fontSize: 14,
+    color: '#4A9B8C',
+    letterSpacing: 4,
+    marginTop: 8,
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: '#94A3B8',
-    marginTop: 4,
+    marginTop: 8,
   },
   loader: {
     marginTop: 40,

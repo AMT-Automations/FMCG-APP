@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -94,10 +95,12 @@ export default function LoginScreen() {
         >
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="car" size={48} color="#3B82F6" />
-            </View>
-            <Text style={styles.title}>Mzansi</Text>
+            <Image
+              source={require('../../assets/logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+            <Text style={styles.tagline}>UMOJA NI NGUVU</Text>
             <Text style={styles.subtitle}>Distribution Tracker</Text>
           </View>
 
@@ -207,7 +210,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#000000',
   },
   keyboardView: {
     flex: 1,
@@ -221,24 +224,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
-  iconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#1E293B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+  logo: {
+    width: 180,
+    height: 130,
+    marginBottom: 8,
   },
-  title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+  tagline: {
+    fontSize: 12,
+    color: '#4A9B8C',
+    letterSpacing: 3,
+    marginTop: 4,
   },
   subtitle: {
     fontSize: 16,
     color: '#94A3B8',
-    marginTop: 4,
+    marginTop: 8,
   },
   form: {
     backgroundColor: '#1E293B',
