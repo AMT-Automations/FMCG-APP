@@ -55,6 +55,24 @@ export default function ProfileScreen() {
 
         {/* Menu Items */}
         <View style={styles.menuSection}>
+          <Text style={styles.sectionTitle}>Products & Inventory</Text>
+          
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => router.push('/manage-products')}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: '#1E3B35' }]}>
+              <Ionicons name="cube-outline" size={20} color="#10B981" />
+            </View>
+            <View style={styles.menuContent}>
+              <Text style={styles.menuTitle}>Manage Products</Text>
+              <Text style={styles.menuSubtitle}>Add or view products in your basket</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#64748B" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.menuSection}>
           <Text style={styles.sectionTitle}>Account</Text>
           
           <TouchableOpacity style={styles.menuItem}>

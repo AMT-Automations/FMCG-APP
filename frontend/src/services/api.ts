@@ -46,6 +46,11 @@ class ApiService {
     return response.data;
   }
 
+  async createProduct(data: { name: string; category: string; unit_type: string; price: number }) {
+    const response = await this.client.post('/products', data);
+    return response.data;
+  }
+
   // Customers
   async getCustomers(routeId?: string) {
     const params = routeId ? { route_id: routeId } : {};
