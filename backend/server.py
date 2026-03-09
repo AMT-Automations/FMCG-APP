@@ -23,13 +23,16 @@ load_dotenv(ROOT_DIR / '.env')
 # JWT Configuration
 JWT_SECRET = os.environ.get('JWT_SECRET')
 if not JWT_SECRET:
-    JWT_SECRET = 'mzansi-distribution-secure-jwt-secret-prod-2025-xK9mP2vL'  # Fallback for dev
+    raise RuntimeError("JWT_SECRET environment variable must be set")
 JWT_ALGORITHM = "HS256"
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ.get('DB_NAME', 'mzansi_distribution')]
+db_name = os.environ.get('DB_NAME')
+if not db_name:
+    db_name = 'mzansi_distribution'  # Default for production
+db = client[db_name]
 
 # Create the main app
 app = FastAPI(title="Mzansi Distribution Tracker API")
@@ -355,7 +358,8 @@ async def get_users(current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    users = await db.users.find().to_list(500)
+    # Exclude sensitive fields from user list
+    users = await db.users.find({}, {'pin_hash': 0}).to_list(500)
     return [str_id(u) for u in users]
 
 @api_router.post("/users", response_model=UserResponse)

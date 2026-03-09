@@ -1,11 +1,15 @@
 import axios from 'axios';
 
-const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:8001';
+// Get backend URL from environment - required for production
+const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+if (!BASE_URL) {
+  console.warn('EXPO_PUBLIC_BACKEND_URL not set, using relative URL');
+}
 
 class ApiService {
   private token: string | null = null;
   private client = axios.create({
-    baseURL: `${BASE_URL}/api`,
+    baseURL: `${BASE_URL || ''}/api`,
     headers: {
       'Content-Type': 'application/json',
     },
