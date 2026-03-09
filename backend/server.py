@@ -1276,7 +1276,7 @@ async def export_route_report_excel(
     route_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Export route report to Excel format"""
+    """Export beautiful, interactive route report to Excel format"""
     if not date_str:
         date_str = datetime.utcnow().strftime("%Y-%m-%d")
     
@@ -1301,110 +1301,323 @@ async def export_route_report_excel(
     
     sales = await db.sales.find(sales_query).to_list(1000)
     
+    # Get products for breakdown
+    products = await db.products.find().to_list(500)
+    product_map = {str(p["_id"]): p["name"] for p in products}
+    
     # Create Excel file in memory
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     
-    # Styles
+    # ==================== DEFINE STYLES ====================
+    # Brand colors
+    primary_color = '#3B82F6'  # Blue
+    success_color = '#10B981'  # Green
+    warning_color = '#F59E0B'  # Orange
+    danger_color = '#EF4444'   # Red
+    dark_bg = '#1E293B'        # Dark background
+    light_text = '#F8FAFC'     # Light text
+    
+    # Title styles
+    title_format = workbook.add_format({
+        'bold': True, 'font_size': 24, 'font_color': primary_color,
+        'align': 'center', 'valign': 'vcenter'
+    })
+    subtitle_format = workbook.add_format({
+        'bold': True, 'font_size': 14, 'font_color': '#64748B',
+        'align': 'center', 'valign': 'vcenter'
+    })
+    
+    # Header styles
     header_format = workbook.add_format({
-        'bold': True, 'bg_color': '#3B82F6', 'font_color': 'white',
+        'bold': True, 'font_size': 11, 'font_color': 'white',
+        'bg_color': primary_color, 'border': 1, 'border_color': primary_color,
+        'align': 'center', 'valign': 'vcenter', 'text_wrap': True
+    })
+    header_green = workbook.add_format({
+        'bold': True, 'font_size': 11, 'font_color': 'white',
+        'bg_color': success_color, 'border': 1,
+        'align': 'center', 'valign': 'vcenter'
+    })
+    header_orange = workbook.add_format({
+        'bold': True, 'font_size': 11, 'font_color': 'white',
+        'bg_color': warning_color, 'border': 1,
+        'align': 'center', 'valign': 'vcenter'
+    })
+    
+    # Data cell styles
+    cell_format = workbook.add_format({
+        'border': 1, 'border_color': '#E2E8F0',
+        'valign': 'vcenter', 'align': 'left'
+    })
+    cell_center = workbook.add_format({
+        'border': 1, 'border_color': '#E2E8F0',
+        'valign': 'vcenter', 'align': 'center'
+    })
+    cell_wrap = workbook.add_format({
+        'border': 1, 'border_color': '#E2E8F0',
+        'valign': 'vcenter', 'text_wrap': True
+    })
+    
+    # Number formats
+    money_format = workbook.add_format({
+        'num_format': 'R #,##0.00', 'border': 1, 'border_color': '#E2E8F0',
+        'align': 'right', 'valign': 'vcenter'
+    })
+    money_bold = workbook.add_format({
+        'num_format': 'R #,##0.00', 'border': 1, 'bold': True,
+        'align': 'right', 'valign': 'vcenter', 'bg_color': '#F0FDF4'
+    })
+    number_format = workbook.add_format({
+        'num_format': '#,##0', 'border': 1, 'border_color': '#E2E8F0',
+        'align': 'center', 'valign': 'vcenter'
+    })
+    percent_format = workbook.add_format({
+        'num_format': '0.0%', 'border': 1, 'border_color': '#E2E8F0',
+        'align': 'center', 'valign': 'vcenter'
+    })
+    date_format = workbook.add_format({
+        'num_format': 'yyyy-mm-dd', 'border': 1, 'border_color': '#E2E8F0',
+        'align': 'center', 'valign': 'vcenter'
+    })
+    time_format = workbook.add_format({
+        'num_format': 'hh:mm', 'border': 1, 'border_color': '#E2E8F0',
+        'align': 'center', 'valign': 'vcenter'
+    })
+    
+    # Status styles
+    status_delivered = workbook.add_format({
+        'bold': True, 'font_color': 'white', 'bg_color': success_color,
         'border': 1, 'align': 'center', 'valign': 'vcenter'
     })
-    money_format = workbook.add_format({'num_format': 'R #,##0.00', 'border': 1})
-    number_format = workbook.add_format({'num_format': '#,##0', 'border': 1})
-    cell_format = workbook.add_format({'border': 1, 'valign': 'vcenter'})
-    title_format = workbook.add_format({
-        'bold': True, 'font_size': 14, 'align': 'center'
+    status_pending = workbook.add_format({
+        'bold': True, 'font_color': 'white', 'bg_color': warning_color,
+        'border': 1, 'align': 'center', 'valign': 'vcenter'
+    })
+    status_active = workbook.add_format({
+        'bold': True, 'font_color': 'white', 'bg_color': primary_color,
+        'border': 1, 'align': 'center', 'valign': 'vcenter'
     })
     
-    # Summary Sheet
-    summary_sheet = workbook.add_worksheet('Summary')
-    summary_sheet.set_column('A:B', 25)
-    summary_sheet.merge_range('A1:B1', f'Route Report - {date_str}', title_format)
+    # KPI Card styles
+    kpi_label = workbook.add_format({
+        'font_size': 10, 'font_color': '#64748B',
+        'align': 'center', 'valign': 'bottom'
+    })
+    kpi_value = workbook.add_format({
+        'bold': True, 'font_size': 18, 'font_color': '#1E293B',
+        'align': 'center', 'valign': 'top'
+    })
+    kpi_value_money = workbook.add_format({
+        'bold': True, 'font_size': 18, 'font_color': success_color,
+        'num_format': 'R #,##0.00', 'align': 'center', 'valign': 'top'
+    })
     
+    # Alternating row colors
+    row_even = workbook.add_format({
+        'border': 1, 'border_color': '#E2E8F0',
+        'bg_color': '#F8FAFC', 'valign': 'vcenter'
+    })
+    row_odd = workbook.add_format({
+        'border': 1, 'border_color': '#E2E8F0',
+        'valign': 'vcenter'
+    })
+    
+    # Calculate totals
     total_collected = sum(s.get("cash_collected", 0) for s in sales)
     total_expected = sum(s.get("total_amount", 0) for s in sales)
     total_crates_dropped = sum(s.get("crates_dropped", 0) for s in sales)
     total_crates_collected = sum(s.get("crates_collected", 0) for s in sales)
     total_km = sum(dr.get("km_traveled", 0) or 0 for dr in daily_routes)
+    collection_rate = (total_collected / total_expected) if total_expected > 0 else 0
     
-    summary_data = [
-        ['Date', date_str],
-        ['Total Routes', len(daily_routes)],
-        ['Total Sales', len(sales)],
-        ['Total Collected', total_collected],
-        ['Total Expected', total_expected],
-        ['Collection Rate', f"{(total_collected / total_expected * 100) if total_expected > 0 else 0:.1f}%"],
-        ['Total KM Traveled', total_km],
-        ['Crates Dropped', total_crates_dropped],
-        ['Crates Collected', total_crates_collected],
-        ['Net Crates Out', total_crates_dropped - total_crates_collected],
+    # ==================== DASHBOARD SHEET ====================
+    dashboard = workbook.add_worksheet('📊 Dashboard')
+    dashboard.set_tab_color(primary_color)
+    
+    # Set column widths
+    dashboard.set_column('A:A', 3)   # Margin
+    dashboard.set_column('B:G', 18)  # KPI columns
+    dashboard.set_column('H:H', 3)   # Margin
+    
+    # Hide gridlines for cleaner look
+    dashboard.hide_gridlines(2)
+    
+    # Title
+    dashboard.set_row(1, 40)
+    dashboard.merge_range('B2:G2', '📊 MZANSI DISTRIBUTION TRACKER', title_format)
+    dashboard.merge_range('B3:G3', f'Daily Report - {date_str}', subtitle_format)
+    
+    # KPI Cards Row 1
+    dashboard.set_row(5, 20)
+    dashboard.set_row(6, 30)
+    
+    kpis = [
+        ('Total Sales', len(sales), None),
+        ('Cash Collected', total_collected, 'money'),
+        ('Expected', total_expected, 'money'),
+        ('Collection Rate', collection_rate, 'percent'),
+        ('Routes', len(daily_routes), None),
+        ('KM Traveled', total_km, None),
     ]
     
-    for row_num, (label, value) in enumerate(summary_data, start=2):
-        summary_sheet.write(row_num, 0, label, cell_format)
-        if isinstance(value, float) and 'Rate' not in label:
-            summary_sheet.write(row_num, 1, value, money_format)
+    for i, (label, value, fmt) in enumerate(kpis):
+        col = i + 1  # B=1, C=2, etc.
+        dashboard.write(4, col, label, kpi_label)
+        if fmt == 'money':
+            dashboard.write(5, col, value, kpi_value_money)
+        elif fmt == 'percent':
+            dashboard.write(5, col, f"{value*100:.1f}%", kpi_value)
         else:
-            summary_sheet.write(row_num, 1, value, cell_format)
+            dashboard.write(5, col, value, kpi_value)
     
-    # Sales Detail Sheet
-    sales_sheet = workbook.add_worksheet('Sales Details')
-    sales_headers = ['Time', 'Customer', 'Driver', 'Route', 'Products', 'Total', 'Cash Collected', 
-                     'Crates Dropped', 'Crates Collected', 'Payment Type', 'Status']
+    # Crates Summary Row
+    dashboard.set_row(8, 20)
+    dashboard.set_row(9, 30)
+    
+    crate_kpis = [
+        ('Crates Out', total_crates_dropped),
+        ('Crates In', total_crates_collected),
+        ('Net Crates', total_crates_dropped - total_crates_collected),
+    ]
+    
+    for i, (label, value) in enumerate(crate_kpis):
+        col = i + 1
+        dashboard.write(7, col, label, kpi_label)
+        dashboard.write(8, col, value, kpi_value)
+    
+    # Add a mini sales table on dashboard
+    dashboard.write(11, 1, 'Recent Sales', header_format)
+    dashboard.merge_range('B12:G12', '', header_format)
+    
+    mini_headers = ['Time', 'Customer', 'Amount', 'Collected', 'Status']
+    for i, h in enumerate(mini_headers):
+        dashboard.write(12, i + 1, h, header_format)
+    
+    for row_idx, sale in enumerate(sales[:10], start=13):
+        time_str = sale.get("created_at", datetime.utcnow()).strftime("%H:%M")
+        row_fmt = row_even if row_idx % 2 == 0 else row_odd
+        dashboard.write(row_idx, 1, time_str, row_fmt)
+        dashboard.write(row_idx, 2, sale.get("customer_name", "")[:20], row_fmt)
+        dashboard.write(row_idx, 3, sale.get("total_amount", 0), money_format)
+        dashboard.write(row_idx, 4, sale.get("cash_collected", 0), money_format)
+        status = sale.get("delivery_status", "delivered")
+        if status == "delivered":
+            dashboard.write(row_idx, 5, "✓ Delivered", status_delivered)
+        else:
+            dashboard.write(row_idx, 5, "⏳ Pending", status_pending)
+    
+    # ==================== SALES DETAILS SHEET ====================
+    sales_sheet = workbook.add_worksheet('💰 Sales Details')
+    sales_sheet.set_tab_color(success_color)
+    sales_sheet.hide_gridlines(2)
+    
+    # Set column widths
+    sales_sheet.set_column('A:A', 12)   # Time
+    sales_sheet.set_column('B:B', 25)   # Customer
+    sales_sheet.set_column('C:C', 18)   # Driver
+    sales_sheet.set_column('D:D', 35)   # Products
+    sales_sheet.set_column('E:E', 14)   # Total
+    sales_sheet.set_column('F:F', 14)   # Collected
+    sales_sheet.set_column('G:G', 12)   # Crates Out
+    sales_sheet.set_column('H:H', 12)   # Crates In
+    sales_sheet.set_column('I:I', 12)   # Payment
+    sales_sheet.set_column('J:J', 12)   # Status
+    
+    # Title
+    sales_sheet.set_row(0, 30)
+    sales_sheet.merge_range('A1:J1', f'💰 Sales Report - {date_str}', title_format)
+    
+    # Headers with filters
+    sales_headers = ['Time', 'Customer', 'Driver', 'Products', 'Total', 'Collected', 
+                     'Crates Out', 'Crates In', 'Payment', 'Status']
     
     for col, header in enumerate(sales_headers):
-        sales_sheet.write(0, col, header, header_format)
+        sales_sheet.write(2, col, header, header_format)
     
-    sales_sheet.set_column('A:A', 12)  # Time
-    sales_sheet.set_column('B:B', 25)  # Customer
-    sales_sheet.set_column('C:C', 18)  # Driver
-    sales_sheet.set_column('D:D', 18)  # Route
-    sales_sheet.set_column('E:E', 30)  # Products
-    sales_sheet.set_column('F:G', 15)  # Money columns
-    sales_sheet.set_column('H:I', 15)  # Crates columns
-    sales_sheet.set_column('J:K', 12)  # Type, Status
+    # Enable auto-filter
+    if sales:
+        sales_sheet.autofilter(2, 0, 2 + len(sales), len(sales_headers) - 1)
     
-    for row_num, sale in enumerate(sales, start=1):
+    # Freeze header row
+    sales_sheet.freeze_panes(3, 0)
+    
+    # Data rows
+    for row_num, sale in enumerate(sales, start=3):
         time_str = sale.get("created_at", datetime.utcnow()).strftime("%H:%M")
-        products = ", ".join([f"{i.get('product_name', '')} x{i.get('quantity_delivered', 0)}" for i in sale.get("items", [])])
-        route_name = sale.get("route_name", "N/A")
+        products = ", ".join([f"{i.get('product_name', '')} x{i.get('quantity_delivered', 0)}" 
+                             for i in sale.get("items", [])])
         
-        # Try to get route name from daily route
-        for dr in daily_routes:
-            if dr.get("route_id") == sale.get("route_id"):
-                route_name = dr.get("route_name", route_name)
-                break
+        row_fmt = row_even if row_num % 2 == 0 else row_odd
         
-        sales_sheet.write(row_num, 0, time_str, cell_format)
+        sales_sheet.write(row_num, 0, time_str, cell_center)
         sales_sheet.write(row_num, 1, sale.get("customer_name", ""), cell_format)
         sales_sheet.write(row_num, 2, sale.get("driver_name", ""), cell_format)
-        sales_sheet.write(row_num, 3, route_name, cell_format)
-        sales_sheet.write(row_num, 4, products, cell_format)
-        sales_sheet.write(row_num, 5, sale.get("total_amount", 0), money_format)
-        sales_sheet.write(row_num, 6, sale.get("cash_collected", 0), money_format)
-        sales_sheet.write(row_num, 7, sale.get("crates_dropped", 0), number_format)
-        sales_sheet.write(row_num, 8, sale.get("crates_collected", 0), number_format)
-        sales_sheet.write(row_num, 9, sale.get("payment_type", ""), cell_format)
-        sales_sheet.write(row_num, 10, sale.get("delivery_status", ""), cell_format)
+        sales_sheet.write(row_num, 3, products, cell_wrap)
+        sales_sheet.write(row_num, 4, sale.get("total_amount", 0), money_format)
+        sales_sheet.write(row_num, 5, sale.get("cash_collected", 0), money_format)
+        sales_sheet.write(row_num, 6, sale.get("crates_dropped", 0), number_format)
+        sales_sheet.write(row_num, 7, sale.get("crates_collected", 0), number_format)
+        sales_sheet.write(row_num, 8, sale.get("payment_type", "cash").upper(), cell_center)
+        
+        status = sale.get("delivery_status", "delivered")
+        if status == "delivered":
+            sales_sheet.write(row_num, 9, "✓ DELIVERED", status_delivered)
+        else:
+            sales_sheet.write(row_num, 9, "PENDING", status_pending)
     
-    # Route Details Sheet
-    routes_sheet = workbook.add_worksheet('Route Details')
-    route_headers = ['Route Name', 'Driver', 'Vehicle', 'Opening KM', 'Closing KM', 'KM Traveled', 
+    # Totals row
+    if sales:
+        total_row = 3 + len(sales)
+        sales_sheet.write(total_row, 3, 'TOTALS:', header_format)
+        sales_sheet.write(total_row, 4, total_expected, money_bold)
+        sales_sheet.write(total_row, 5, total_collected, money_bold)
+        sales_sheet.write(total_row, 6, total_crates_dropped, header_green)
+        sales_sheet.write(total_row, 7, total_crates_collected, header_green)
+    
+    # ==================== ROUTES SHEET ====================
+    routes_sheet = workbook.add_worksheet('🚗 Routes')
+    routes_sheet.set_tab_color(warning_color)
+    routes_sheet.hide_gridlines(2)
+    
+    # Set column widths
+    routes_sheet.set_column('A:A', 20)  # Route
+    routes_sheet.set_column('B:B', 18)  # Driver
+    routes_sheet.set_column('C:C', 25)  # Vehicle
+    routes_sheet.set_column('D:D', 12)  # Opening KM
+    routes_sheet.set_column('E:E', 12)  # Closing KM
+    routes_sheet.set_column('F:F', 12)  # KM Traveled
+    routes_sheet.set_column('G:G', 12)  # Crates Out
+    routes_sheet.set_column('H:H', 12)  # Crates In
+    routes_sheet.set_column('I:I', 10)  # Sales
+    routes_sheet.set_column('J:J', 14)  # Collected
+    routes_sheet.set_column('K:K', 12)  # Status
+    
+    # Title
+    routes_sheet.set_row(0, 30)
+    routes_sheet.merge_range('A1:K1', f'🚗 Route Details - {date_str}', title_format)
+    
+    # Headers
+    route_headers = ['Route', 'Driver', 'Vehicle', 'Start KM', 'End KM', 'Distance', 
                      'Crates Out', 'Crates In', 'Sales', 'Collected', 'Status']
     
     for col, header in enumerate(route_headers):
-        routes_sheet.write(0, col, header, header_format)
+        routes_sheet.write(2, col, header, header_format)
     
-    routes_sheet.set_column('A:C', 18)
-    routes_sheet.set_column('D:H', 12)
-    routes_sheet.set_column('I:J', 12)
-    routes_sheet.set_column('K:K', 10)
+    # Enable auto-filter
+    if daily_routes:
+        routes_sheet.autofilter(2, 0, 2 + len(daily_routes), len(route_headers) - 1)
     
-    for row_num, dr in enumerate(daily_routes, start=1):
+    routes_sheet.freeze_panes(3, 0)
+    
+    # Data rows
+    for row_num, dr in enumerate(daily_routes, start=3):
+        vehicle_info = f"{dr.get('vehicle_name', 'N/A')} ({dr.get('vehicle_registration', '')})"
+        row_fmt = row_even if row_num % 2 == 0 else row_odd
+        
         routes_sheet.write(row_num, 0, dr.get("route_name", ""), cell_format)
         routes_sheet.write(row_num, 1, dr.get("driver_name", ""), cell_format)
-        routes_sheet.write(row_num, 2, f"{dr.get('vehicle_name', '')} ({dr.get('vehicle_registration', '')})", cell_format)
+        routes_sheet.write(row_num, 2, vehicle_info, cell_format)
         routes_sheet.write(row_num, 3, dr.get("opening_km", 0), number_format)
         routes_sheet.write(row_num, 4, dr.get("closing_km", 0) or 0, number_format)
         routes_sheet.write(row_num, 5, dr.get("km_traveled", 0) or 0, number_format)
@@ -1412,12 +1625,93 @@ async def export_route_report_excel(
         routes_sheet.write(row_num, 7, dr.get("crates_in", 0) or 0, number_format)
         routes_sheet.write(row_num, 8, dr.get("sales_count", 0), number_format)
         routes_sheet.write(row_num, 9, dr.get("total_collected", 0), money_format)
-        routes_sheet.write(row_num, 10, dr.get("status", ""), cell_format)
+        
+        status = dr.get("status", "active")
+        if status == "completed":
+            routes_sheet.write(row_num, 10, "✓ COMPLETED", status_delivered)
+        else:
+            routes_sheet.write(row_num, 10, "🔵 ACTIVE", status_active)
+    
+    # ==================== PRODUCT BREAKDOWN SHEET ====================
+    products_sheet = workbook.add_worksheet('📦 Products')
+    products_sheet.set_tab_color('#8B5CF6')
+    products_sheet.hide_gridlines(2)
+    
+    # Set column widths
+    products_sheet.set_column('A:A', 25)  # Product
+    products_sheet.set_column('B:B', 15)  # Category
+    products_sheet.set_column('C:C', 12)  # Delivered
+    products_sheet.set_column('D:D', 12)  # Returned
+    products_sheet.set_column('E:E', 12)  # Damages
+    products_sheet.set_column('F:F', 12)  # Net Sold
+    products_sheet.set_column('G:G', 14)  # Revenue
+    
+    # Title
+    products_sheet.set_row(0, 30)
+    products_sheet.merge_range('A1:G1', f'📦 Product Breakdown - {date_str}', title_format)
+    
+    # Calculate product totals
+    product_totals = {}
+    for sale in sales:
+        for item in sale.get("items", []):
+            prod_name = item.get("product_name", "Unknown")
+            if prod_name not in product_totals:
+                product_totals[prod_name] = {
+                    "delivered": 0, "returned": 0, "damages": 0, "revenue": 0,
+                    "category": item.get("category", "Other")
+                }
+            product_totals[prod_name]["delivered"] += item.get("quantity_delivered", 0)
+            product_totals[prod_name]["returned"] += item.get("quantity_returned", 0)
+            product_totals[prod_name]["damages"] += item.get("damages", 0)
+            net = item.get("quantity_delivered", 0) - item.get("quantity_returned", 0)
+            product_totals[prod_name]["revenue"] += net * item.get("unit_price", 0)
+    
+    # Headers
+    prod_headers = ['Product', 'Category', 'Delivered', 'Returned', 'Damages', 'Net Sold', 'Revenue']
+    for col, header in enumerate(prod_headers):
+        products_sheet.write(2, col, header, header_format)
+    
+    if product_totals:
+        products_sheet.autofilter(2, 0, 2 + len(product_totals), len(prod_headers) - 1)
+    
+    products_sheet.freeze_panes(3, 0)
+    
+    # Data rows
+    for row_num, (prod_name, data) in enumerate(sorted(product_totals.items()), start=3):
+        net_sold = data["delivered"] - data["returned"]
+        row_fmt = row_even if row_num % 2 == 0 else row_odd
+        
+        products_sheet.write(row_num, 0, prod_name, cell_format)
+        products_sheet.write(row_num, 1, data["category"], cell_center)
+        products_sheet.write(row_num, 2, data["delivered"], number_format)
+        products_sheet.write(row_num, 3, data["returned"], number_format)
+        products_sheet.write(row_num, 4, data["damages"], number_format)
+        products_sheet.write(row_num, 5, net_sold, header_green if net_sold > 0 else number_format)
+        products_sheet.write(row_num, 6, data["revenue"], money_format)
+    
+    # Grand totals
+    if product_totals:
+        total_row = 3 + len(product_totals)
+        grand_delivered = sum(d["delivered"] for d in product_totals.values())
+        grand_returned = sum(d["returned"] for d in product_totals.values())
+        grand_damages = sum(d["damages"] for d in product_totals.values())
+        grand_revenue = sum(d["revenue"] for d in product_totals.values())
+        
+        products_sheet.write(total_row, 0, 'GRAND TOTAL', header_format)
+        products_sheet.write(total_row, 1, '', header_format)
+        products_sheet.write(total_row, 2, grand_delivered, header_green)
+        products_sheet.write(total_row, 3, grand_returned, header_orange)
+        products_sheet.write(total_row, 4, grand_damages, header_orange)
+        products_sheet.write(total_row, 5, grand_delivered - grand_returned, header_green)
+        products_sheet.write(total_row, 6, grand_revenue, money_bold)
+    
+    # Set Dashboard as the active sheet
+    dashboard.activate()
     
     workbook.close()
     output.seek(0)
     
-    filename = f"route_report_{date_str}.xlsx"
+    filename = f"mzansi_report_{date_str}.xlsx"
     
     return StreamingResponse(
         output,
