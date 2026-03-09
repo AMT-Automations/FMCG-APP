@@ -31,7 +31,7 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db_name = os.environ.get('DB_NAME')
 if not db_name:
-    db_name = 'mzansi_distribution'  # Default for production
+    raise RuntimeError("DB_NAME environment variable must be set")
 db = client[db_name]
 
 # Create the main app
