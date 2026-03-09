@@ -217,6 +217,12 @@ class ApiService {
     return response.data;
   }
 
+  async getActiveDailyRoute() {
+    // Get the first active route for the current driver
+    const routes = await this.getActiveDailyRoutes();
+    return routes.length > 0 ? routes[0] : null;
+  }
+
   async getAllActiveRoutes() {
     const response = await this.client.get('/daily-routes/active/all');
     return response.data;
