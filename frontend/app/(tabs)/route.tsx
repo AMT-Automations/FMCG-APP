@@ -12,7 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
 
@@ -34,6 +34,7 @@ interface Route {
 
 export default function RouteScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [activeRoute, setActiveRoute] = useState<any>(null);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -46,10 +47,17 @@ export default function RouteScreen() {
 
   const loadData = async () => {
     try {
-      const [activeRouteData, routesData] = await Promise.all([
-        api.getActiveDailyRoute(),
-        api.getRoutes(),
-      ]);
+      let activeRouteData;
+      
+      // If a specific daily route ID is passed, load that route
+      if (params.dailyRouteId) {
+        activeRouteData = await api.getDailyRouteById(params.dailyRouteId as string);
+      } else {
+        // Otherwise get the first active route for this driver
+        activeRouteData = await api.getActiveDailyRoute();
+      }
+      
+      const routesData = await api.getRoutes();
       setActiveRoute(activeRouteData);
       setRoutes(routesData);
 
@@ -75,7 +83,7 @@ export default function RouteScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [])
+    }, [params.dailyRouteId])
   );
 
   const onRefresh = () => {

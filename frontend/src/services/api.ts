@@ -266,6 +266,54 @@ class ApiService {
     return url;
   }
 
+  // Email Reports
+  async sendEmailReport(data: { report_type: string; recipient_emails: string[]; date_str?: string; include_excel?: boolean }) {
+    const response = await this.client.post('/reports/email', data);
+    return response.data;
+  }
+
+  async getEmailLogs() {
+    const response = await this.client.get('/reports/email-logs');
+    return response.data;
+  }
+
+  async saveEmailSettings(config: { smtp_server?: string; smtp_port?: number; sender_email: string; sender_password: string; recipient_emails: string[] }) {
+    const response = await this.client.post('/settings/email', config);
+    return response.data;
+  }
+
+  async getEmailSettings() {
+    const response = await this.client.get('/settings/email');
+    return response.data;
+  }
+
+  // Customer Pricing
+  async getCustomerPrices(customerId: string) {
+    const response = await this.client.get(`/customers/${customerId}/prices`);
+    return response.data;
+  }
+
+  async updateCustomerPrices(customerId: string, prices: Record<string, number>) {
+    const response = await this.client.put(`/customers/${customerId}/prices`, prices);
+    return response.data;
+  }
+
+  // Daily Route specific
+  async getDailyRouteById(routeId: string) {
+    const response = await this.client.get(`/daily-routes/${routeId}`);
+    return response.data;
+  }
+
+  async deleteDailyRoute(routeId: string) {
+    const response = await this.client.delete(`/daily-routes/${routeId}`);
+    return response.data;
+  }
+
+  async endDailyRoute(routeId: string, data: { closing_km: number; crates_in: number; damages_count?: number; fuel_used?: number; notes?: string }) {
+    const response = await this.client.put(`/daily-routes/${routeId}/end`, data);
+    return response.data;
+  }
+
   // Vehicles
   async getVehicles(includeInactive: boolean = false) {
     const params = includeInactive ? { include_inactive: true } : {};

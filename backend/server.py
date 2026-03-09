@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
@@ -7,6 +7,11 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import io
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -130,6 +135,7 @@ class CustomerCreate(BaseModel):
     payment_terms: str = "cash"  # cash, credit, mixed
     credit_limit: Optional[float] = None
     route_id: Optional[str] = None
+    custom_prices: Optional[Dict[str, float]] = None  # product_id -> custom price
 
 class CustomerUpdate(BaseModel):
     name: Optional[str] = None
@@ -138,6 +144,7 @@ class CustomerUpdate(BaseModel):
     payment_terms: Optional[str] = None
     credit_limit: Optional[float] = None
     route_id: Optional[str] = None
+    custom_prices: Optional[Dict[str, float]] = None  # product_id -> custom price
     is_active: Optional[bool] = None
 
 class CustomerResponse(BaseModel):
@@ -1150,6 +1157,37 @@ async def get_daily_route_history(
     routes = await db.daily_routes.find(query).sort("date", -1).to_list(100)
     return [str_id(r) for r in routes]
 
+@api_router.get("/daily-routes/{route_id}", response_model=DailyRouteResponse)
+async def get_daily_route_by_id(route_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a specific daily route by ID"""
+    daily_route = await db.daily_routes.find_one({"_id": ObjectId(route_id)})
+    if not daily_route:
+        raise HTTPException(status_code=404, detail="Daily route not found")
+    
+    # Check permissions - drivers can only see their own routes
+    if current_user["role"] == "driver" and daily_route["driver_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to view this route")
+    
+    return str_id(daily_route)
+
+@api_router.delete("/daily-routes/{route_id}")
+async def delete_daily_route(route_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete/cancel a daily route - Admin/Manager only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required to delete routes")
+    
+    daily_route = await db.daily_routes.find_one({"_id": ObjectId(route_id)})
+    if not daily_route:
+        raise HTTPException(status_code=404, detail="Daily route not found")
+    
+    # Delete associated sales if any
+    await db.sales.delete_many({"route_id": route_id})
+    
+    # Delete the route
+    await db.daily_routes.delete_one({"_id": ObjectId(route_id)})
+    
+    return {"message": "Route deleted successfully", "deleted_sales": True}
+
 # ==================== REPORTS ENDPOINTS ====================
 
 @api_router.get("/reports/daily-summary")
@@ -1459,6 +1497,235 @@ async def seed_all_data():
     }
 
 # Health check
+# ==================== EMAIL REPORT ENDPOINTS ====================
+
+class EmailReportRequest(BaseModel):
+    report_type: str  # daily, weekly, monthly
+    recipient_emails: List[str]
+    date_str: Optional[str] = None
+    include_excel: bool = True
+
+@api_router.post("/settings/email")
+async def save_email_settings(config: dict, current_user: dict = Depends(get_current_user)):
+    """Save email settings - Admin only"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    await db.settings.update_one(
+        {"key": "email_config"},
+        {"$set": {"key": "email_config", "value": config, "updated_at": datetime.utcnow()}},
+        upsert=True
+    )
+    return {"message": "Email settings saved"}
+
+@api_router.get("/settings/email")
+async def get_email_settings(current_user: dict = Depends(get_current_user)):
+    """Get email settings - Admin only"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    settings = await db.settings.find_one({"key": "email_config"})
+    if not settings:
+        return {"configured": False}
+    return {"configured": True, "recipient_emails": settings.get("value", {}).get("recipient_emails", [])}
+
+async def generate_report_excel_for_email(report_type: str, date_str: str = None):
+    """Generate Excel report for emailing"""
+    if not date_str:
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    end_date = datetime.strptime(date_str, "%Y-%m-%d")
+    if report_type == "daily":
+        start_date = end_date
+    elif report_type == "weekly":
+        start_date = end_date - timedelta(days=7)
+    elif report_type == "monthly":
+        start_date = end_date - timedelta(days=30)
+    else:
+        start_date = end_date
+    
+    daily_routes = await db.daily_routes.find({
+        "date": {"$gte": start_date.strftime("%Y-%m-%d"), "$lte": date_str}
+    }).to_list(500)
+    
+    sales = await db.sales.find({
+        "created_at": {"$gte": start_date, "$lte": end_date.replace(hour=23, minute=59, second=59)},
+        "is_voided": {"$ne": True}
+    }).to_list(5000)
+    
+    output = io.BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    
+    header_format = workbook.add_format({'bold': True, 'bg_color': '#3B82F6', 'font_color': 'white', 'border': 1})
+    money_format = workbook.add_format({'num_format': 'R #,##0.00', 'border': 1})
+    cell_format = workbook.add_format({'border': 1})
+    
+    summary = workbook.add_worksheet('Summary')
+    summary.set_column('A:B', 25)
+    summary.write('A1', 'Metric', header_format)
+    summary.write('B1', 'Value', header_format)
+    
+    total_collected = sum(s.get("cash_collected", 0) for s in sales)
+    total_expected = sum(s.get("total_amount", 0) for s in sales)
+    
+    metrics = [
+        ('Report Type', report_type.capitalize()),
+        ('Period', f"{start_date.strftime('%Y-%m-%d')} to {date_str}"),
+        ('Total Routes', len(daily_routes)),
+        ('Total Sales', len(sales)),
+        ('Total Collected', total_collected),
+        ('Total Expected', total_expected),
+    ]
+    
+    for i, (metric, value) in enumerate(metrics, start=1):
+        summary.write(i, 0, metric, cell_format)
+        summary.write(i, 1, str(value) if not isinstance(value, float) else value, money_format if isinstance(value, float) else cell_format)
+    
+    sales_sheet = workbook.add_worksheet('Sales')
+    headers = ['Date/Time', 'Customer', 'Driver', 'Total', 'Collected', 'Crates Out', 'Crates In']
+    for col, h in enumerate(headers):
+        sales_sheet.write(0, col, h, header_format)
+    
+    for row, sale in enumerate(sales, start=1):
+        created_at = sale.get("created_at", datetime.utcnow())
+        sales_sheet.write(row, 0, created_at.strftime("%Y-%m-%d %H:%M"), cell_format)
+        sales_sheet.write(row, 1, sale.get("customer_name", ""), cell_format)
+        sales_sheet.write(row, 2, sale.get("driver_name", ""), cell_format)
+        sales_sheet.write(row, 3, sale.get("total_amount", 0), money_format)
+        sales_sheet.write(row, 4, sale.get("cash_collected", 0), money_format)
+        sales_sheet.write(row, 5, sale.get("crates_dropped", 0), cell_format)
+        sales_sheet.write(row, 6, sale.get("crates_collected", 0), cell_format)
+    
+    workbook.close()
+    output.seek(0)
+    return output.getvalue()
+
+@api_router.post("/reports/email")
+async def email_report(
+    request: EmailReportRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+):
+    """Send report via email - Admin/Manager only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    settings = await db.settings.find_one({"key": "email_config"})
+    if not settings or not settings.get("value"):
+        raise HTTPException(status_code=400, detail="Email not configured. Please set up email settings first.")
+    
+    email_config = settings["value"]
+    date_str = request.date_str or datetime.utcnow().strftime("%Y-%m-%d")
+    
+    email_record = {
+        "report_type": request.report_type,
+        "recipient_emails": request.recipient_emails,
+        "date_str": date_str,
+        "status": "pending",
+        "requested_by": current_user["id"],
+        "requested_at": datetime.utcnow()
+    }
+    
+    result = await db.email_logs.insert_one(email_record)
+    email_id = str(result.inserted_id)
+    
+    async def send_email_task():
+        try:
+            excel_data = await generate_report_excel_for_email(request.report_type, date_str)
+            
+            msg = MIMEMultipart()
+            msg['From'] = email_config.get('sender_email')
+            msg['To'] = ', '.join(request.recipient_emails)
+            msg['Subject'] = f"Mzansi Distribution - {request.report_type.capitalize()} Report ({date_str})"
+            
+            body = f"Dear Team,\n\nPlease find attached the {request.report_type} report for {date_str}.\n\nBest regards,\nDistribution Management System"
+            msg.attach(MIMEText(body, 'plain'))
+            
+            if request.include_excel:
+                attachment = MIMEBase('application', 'vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                attachment.set_payload(excel_data)
+                encoders.encode_base64(attachment)
+                attachment.add_header('Content-Disposition', f'attachment; filename={request.report_type}_report_{date_str}.xlsx')
+                msg.attach(attachment)
+            
+            server = smtplib.SMTP(email_config.get('smtp_server', 'smtp.gmail.com'), email_config.get('smtp_port', 587))
+            server.starttls()
+            server.login(email_config.get('sender_email'), email_config.get('sender_password'))
+            server.send_message(msg)
+            server.quit()
+            
+            await db.email_logs.update_one(
+                {"_id": ObjectId(email_id)},
+                {"$set": {"status": "sent", "sent_at": datetime.utcnow()}}
+            )
+        except Exception as e:
+            await db.email_logs.update_one(
+                {"_id": ObjectId(email_id)},
+                {"$set": {"status": "failed", "error": str(e), "failed_at": datetime.utcnow()}}
+            )
+    
+    background_tasks.add_task(send_email_task)
+    
+    return {"message": f"{request.report_type.capitalize()} report queued", "email_id": email_id}
+
+@api_router.get("/reports/email-logs")
+async def get_email_logs(current_user: dict = Depends(get_current_user)):
+    """Get email send history"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    logs = await db.email_logs.find().sort("requested_at", -1).to_list(50)
+    return [str_id(log) for log in logs]
+
+# ==================== CUSTOMER PRICING ENDPOINTS ====================
+
+@api_router.get("/customers/{customer_id}/prices")
+async def get_customer_prices(customer_id: str, current_user: dict = Depends(get_current_user)):
+    """Get custom prices for a customer"""
+    customer = await db.customers.find_one({"_id": ObjectId(customer_id)})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    products = await db.products.find().to_list(500)
+    custom_prices = customer.get("custom_prices", {})
+    
+    price_list = []
+    for product in products:
+        product_id = str(product["_id"])
+        price_list.append({
+            "product_id": product_id,
+            "product_name": product["name"],
+            "category": product["category"],
+            "default_price": product["price"],
+            "custom_price": custom_prices.get(product_id),
+            "effective_price": custom_prices.get(product_id, product["price"])
+        })
+    
+    return {"customer_id": customer_id, "customer_name": customer["name"], "price_list": price_list}
+
+@api_router.put("/customers/{customer_id}/prices")
+async def update_customer_prices(
+    customer_id: str,
+    prices: Dict[str, float],
+    current_user: dict = Depends(get_current_user)
+):
+    """Update custom prices for a customer - Admin/Manager only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    customer = await db.customers.find_one({"_id": ObjectId(customer_id)})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    await db.customers.update_one(
+        {"_id": ObjectId(customer_id)},
+        {"$set": {"custom_prices": prices, "prices_updated_at": datetime.utcnow()}}
+    )
+    
+    return {"message": "Customer prices updated", "customer_id": customer_id}
+
+# ==================== HEALTH CHECK ====================
+
 @api_router.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}

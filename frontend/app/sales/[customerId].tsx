@@ -59,7 +59,33 @@ export default function SalesEntryScreen() {
         api.getProducts(),
         api.getActiveDailyRoute(),
       ]);
-      setProducts(productsData);
+      
+      // Try to get customer-specific prices if customer ID is available
+      let customerPrices: Record<string, number> = {};
+      if (customerId) {
+        try {
+          const priceData = await api.getCustomerPrices(customerId);
+          if (priceData && priceData.price_list) {
+            priceData.price_list.forEach((item: any) => {
+              if (item.custom_price !== null) {
+                customerPrices[item.product_id] = item.effective_price;
+              }
+            });
+          }
+        } catch (e) {
+          // Customer-specific prices not available, use default
+          console.log('Using default prices');
+        }
+      }
+      
+      // Apply customer-specific prices to products
+      const productsWithPrices = productsData.map((product: Product) => ({
+        ...product,
+        price: customerPrices[product.id] || product.price,
+        hasCustomPrice: !!customerPrices[product.id],
+      }));
+      
+      setProducts(productsWithPrices);
       setActiveRoute(routeData);
     } catch (error) {
       console.error('Error loading data:', error);
