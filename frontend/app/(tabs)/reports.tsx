@@ -7,11 +7,15 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
+  Alert,
+  Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ReportsScreen() {
   const [summary, setSummary] = useState<any>(null);
@@ -47,6 +51,54 @@ export default function ReportsScreen() {
     loadData();
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        Alert.alert('Error', 'Please login to download reports');
+        return;
+      }
+      
+      const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || '';
+      const url = `${baseUrl}/api/reports/export/excel?date_str=${selectedDate}`;
+      
+      if (Platform.OS === 'web') {
+        // For web, create a link and trigger download
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `route_report_${selectedDate}.xlsx`);
+        
+        // Add auth header via fetch and blob
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const blob = await response.blob();
+        const downloadUrl = URL.createObjectURL(blob);
+        link.href = downloadUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(downloadUrl);
+      } else {
+        // For mobile, open in browser or use sharing
+        Alert.alert(
+          'Export Report',
+          'The Excel report will be downloaded to your device.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Download', 
+              onPress: () => Linking.openURL(url)
+            }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      Alert.alert('Error', 'Failed to export report');
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return `R ${amount.toFixed(2)}`;
   };
@@ -73,8 +125,14 @@ export default function ReportsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Reports</Text>
-        <Text style={styles.headerSubtitle}>{formatDate(selectedDate)}</Text>
+        <View>
+          <Text style={styles.headerTitle}>Reports</Text>
+          <Text style={styles.headerSubtitle}>{formatDate(selectedDate)}</Text>
+        </View>
+        <TouchableOpacity style={styles.exportButton} onPress={handleExportExcel}>
+          <Ionicons name="download-outline" size={20} color="#FFFFFF" />
+          <Text style={styles.exportButtonText}>Excel</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -244,6 +302,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
     backgroundColor: '#1E293B',
     borderBottomWidth: 1,
@@ -258,6 +319,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#94A3B8',
     marginTop: 4,
+  },
+  exportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B981',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  exportButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   scrollView: {
     flex: 1,

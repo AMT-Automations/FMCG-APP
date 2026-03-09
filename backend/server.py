@@ -1,10 +1,12 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import io
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -13,6 +15,7 @@ from datetime import datetime, date, timedelta
 import hashlib
 import jwt
 from bson import ObjectId
+import xlsxwriter
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -196,6 +199,8 @@ class SaleCreate(BaseModel):
     customer_id: str
     customer_name: str
     items: List[SaleItemCreate]
+    crates_dropped: int = 0  # Crates left with customer
+    crates_collected: int = 0  # Crates collected back (empties)
     cash_collected: float
     payment_type: str = "cash"  # cash, card, mobile
     notes: Optional[str] = None
@@ -218,6 +223,8 @@ class SaleResponse(BaseModel):
     driver_name: str
     items: List[dict]
     total_amount: float
+    crates_dropped: int = 0
+    crates_collected: int = 0
     cash_collected: float
     payment_type: str
     delivery_status: str = "delivered"
@@ -812,6 +819,8 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
         "driver_name": current_user["name"],
         "items": [item.dict() for item in sale.items],
         "total_amount": total,
+        "crates_dropped": sale.crates_dropped,
+        "crates_collected": sale.crates_collected,
         "cash_collected": sale.cash_collected,
         "payment_type": sale.payment_type,
         "delivery_status": sale.delivery_status,
@@ -823,11 +832,16 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
     result = await db.sales.insert_one(sale_doc)
     sale_doc["_id"] = result.inserted_id
     
-    # Update daily route totals
+    # Update daily route totals including crates
     today = datetime.utcnow().strftime("%Y-%m-%d")
     await db.daily_routes.update_one(
         {"driver_id": current_user["id"], "date": today, "status": "active"},
-        {"$inc": {"sales_count": 1, "total_collected": sale.cash_collected}}
+        {"$inc": {
+            "sales_count": 1, 
+            "total_collected": sale.cash_collected,
+            "total_crates_dropped": sale.crates_dropped,
+            "total_crates_collected": sale.crates_collected
+        }}
     )
     
     # Update customer balance if credit
@@ -1213,6 +1227,161 @@ async def get_route_performance(route_id: str, days: int = 7):
         "avg_sales_per_trip": sum(dr.get("sales_count", 0) for dr in daily_routes) / len(daily_routes) if daily_routes else 0,
         "daily_breakdown": [str_id(dr) for dr in daily_routes]
     }
+
+@api_router.get("/reports/export/excel")
+async def export_route_report_excel(
+    date_str: Optional[str] = None,
+    route_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export route report to Excel format"""
+    if not date_str:
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # Get daily routes
+    query = {"date": date_str}
+    if route_id:
+        query["route_id"] = route_id
+    if current_user["role"] == "driver":
+        query["driver_id"] = current_user["id"]
+    
+    daily_routes = await db.daily_routes.find(query).to_list(100)
+    
+    # Get sales for the day
+    start = datetime.strptime(date_str, "%Y-%m-%d")
+    end = start.replace(hour=23, minute=59, second=59)
+    
+    sales_query = {"created_at": {"$gte": start, "$lte": end}, "is_voided": {"$ne": True}}
+    if route_id:
+        sales_query["route_id"] = route_id
+    if current_user["role"] == "driver":
+        sales_query["driver_id"] = current_user["id"]
+    
+    sales = await db.sales.find(sales_query).to_list(1000)
+    
+    # Create Excel file in memory
+    output = io.BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    
+    # Styles
+    header_format = workbook.add_format({
+        'bold': True, 'bg_color': '#3B82F6', 'font_color': 'white',
+        'border': 1, 'align': 'center', 'valign': 'vcenter'
+    })
+    money_format = workbook.add_format({'num_format': 'R #,##0.00', 'border': 1})
+    number_format = workbook.add_format({'num_format': '#,##0', 'border': 1})
+    cell_format = workbook.add_format({'border': 1, 'valign': 'vcenter'})
+    title_format = workbook.add_format({
+        'bold': True, 'font_size': 14, 'align': 'center'
+    })
+    
+    # Summary Sheet
+    summary_sheet = workbook.add_worksheet('Summary')
+    summary_sheet.set_column('A:B', 25)
+    summary_sheet.merge_range('A1:B1', f'Route Report - {date_str}', title_format)
+    
+    total_collected = sum(s.get("cash_collected", 0) for s in sales)
+    total_expected = sum(s.get("total_amount", 0) for s in sales)
+    total_crates_dropped = sum(s.get("crates_dropped", 0) for s in sales)
+    total_crates_collected = sum(s.get("crates_collected", 0) for s in sales)
+    total_km = sum(dr.get("km_traveled", 0) or 0 for dr in daily_routes)
+    
+    summary_data = [
+        ['Date', date_str],
+        ['Total Routes', len(daily_routes)],
+        ['Total Sales', len(sales)],
+        ['Total Collected', total_collected],
+        ['Total Expected', total_expected],
+        ['Collection Rate', f"{(total_collected / total_expected * 100) if total_expected > 0 else 0:.1f}%"],
+        ['Total KM Traveled', total_km],
+        ['Crates Dropped', total_crates_dropped],
+        ['Crates Collected', total_crates_collected],
+        ['Net Crates Out', total_crates_dropped - total_crates_collected],
+    ]
+    
+    for row_num, (label, value) in enumerate(summary_data, start=2):
+        summary_sheet.write(row_num, 0, label, cell_format)
+        if isinstance(value, float) and 'Rate' not in label:
+            summary_sheet.write(row_num, 1, value, money_format)
+        else:
+            summary_sheet.write(row_num, 1, value, cell_format)
+    
+    # Sales Detail Sheet
+    sales_sheet = workbook.add_worksheet('Sales Details')
+    sales_headers = ['Time', 'Customer', 'Driver', 'Route', 'Products', 'Total', 'Cash Collected', 
+                     'Crates Dropped', 'Crates Collected', 'Payment Type', 'Status']
+    
+    for col, header in enumerate(sales_headers):
+        sales_sheet.write(0, col, header, header_format)
+    
+    sales_sheet.set_column('A:A', 12)  # Time
+    sales_sheet.set_column('B:B', 25)  # Customer
+    sales_sheet.set_column('C:C', 18)  # Driver
+    sales_sheet.set_column('D:D', 18)  # Route
+    sales_sheet.set_column('E:E', 30)  # Products
+    sales_sheet.set_column('F:G', 15)  # Money columns
+    sales_sheet.set_column('H:I', 15)  # Crates columns
+    sales_sheet.set_column('J:K', 12)  # Type, Status
+    
+    for row_num, sale in enumerate(sales, start=1):
+        time_str = sale.get("created_at", datetime.utcnow()).strftime("%H:%M")
+        products = ", ".join([f"{i.get('product_name', '')} x{i.get('quantity_delivered', 0)}" for i in sale.get("items", [])])
+        route_name = sale.get("route_name", "N/A")
+        
+        # Try to get route name from daily route
+        for dr in daily_routes:
+            if dr.get("route_id") == sale.get("route_id"):
+                route_name = dr.get("route_name", route_name)
+                break
+        
+        sales_sheet.write(row_num, 0, time_str, cell_format)
+        sales_sheet.write(row_num, 1, sale.get("customer_name", ""), cell_format)
+        sales_sheet.write(row_num, 2, sale.get("driver_name", ""), cell_format)
+        sales_sheet.write(row_num, 3, route_name, cell_format)
+        sales_sheet.write(row_num, 4, products, cell_format)
+        sales_sheet.write(row_num, 5, sale.get("total_amount", 0), money_format)
+        sales_sheet.write(row_num, 6, sale.get("cash_collected", 0), money_format)
+        sales_sheet.write(row_num, 7, sale.get("crates_dropped", 0), number_format)
+        sales_sheet.write(row_num, 8, sale.get("crates_collected", 0), number_format)
+        sales_sheet.write(row_num, 9, sale.get("payment_type", ""), cell_format)
+        sales_sheet.write(row_num, 10, sale.get("delivery_status", ""), cell_format)
+    
+    # Route Details Sheet
+    routes_sheet = workbook.add_worksheet('Route Details')
+    route_headers = ['Route Name', 'Driver', 'Vehicle', 'Opening KM', 'Closing KM', 'KM Traveled', 
+                     'Crates Out', 'Crates In', 'Sales', 'Collected', 'Status']
+    
+    for col, header in enumerate(route_headers):
+        routes_sheet.write(0, col, header, header_format)
+    
+    routes_sheet.set_column('A:C', 18)
+    routes_sheet.set_column('D:H', 12)
+    routes_sheet.set_column('I:J', 12)
+    routes_sheet.set_column('K:K', 10)
+    
+    for row_num, dr in enumerate(daily_routes, start=1):
+        routes_sheet.write(row_num, 0, dr.get("route_name", ""), cell_format)
+        routes_sheet.write(row_num, 1, dr.get("driver_name", ""), cell_format)
+        routes_sheet.write(row_num, 2, f"{dr.get('vehicle_name', '')} ({dr.get('vehicle_registration', '')})", cell_format)
+        routes_sheet.write(row_num, 3, dr.get("opening_km", 0), number_format)
+        routes_sheet.write(row_num, 4, dr.get("closing_km", 0) or 0, number_format)
+        routes_sheet.write(row_num, 5, dr.get("km_traveled", 0) or 0, number_format)
+        routes_sheet.write(row_num, 6, dr.get("crates_out", 0), number_format)
+        routes_sheet.write(row_num, 7, dr.get("crates_in", 0) or 0, number_format)
+        routes_sheet.write(row_num, 8, dr.get("sales_count", 0), number_format)
+        routes_sheet.write(row_num, 9, dr.get("total_collected", 0), money_format)
+        routes_sheet.write(row_num, 10, dr.get("status", ""), cell_format)
+    
+    workbook.close()
+    output.seek(0)
+    
+    filename = f"route_report_{date_str}.xlsx"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 # ==================== PERMISSIONS CHECK ENDPOINT ====================
 

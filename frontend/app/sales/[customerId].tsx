@@ -39,6 +39,8 @@ export default function SalesEntryScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [activeRoute, setActiveRoute] = useState<any>(null);
   const [items, setItems] = useState<{ [key: string]: SaleItem }>({});
+  const [cratesDropped, setCratesDropped] = useState('');
+  const [cratesCollected, setCratesCollected] = useState('');
   const [cashCollected, setCashCollected] = useState('');
   const [paymentType, setPaymentType] = useState('cash');
   const [notes, setNotes] = useState('');
@@ -120,6 +122,8 @@ export default function SalesEntryScreen() {
         customer_id: customerId || '',
         customer_name: customerName,
         items: saleItems,
+        crates_dropped: parseInt(cratesDropped) || 0,
+        crates_collected: parseInt(cratesCollected) || 0,
         cash_collected: parseFloat(cashCollected),
         payment_type: paymentType,
         notes: notes || undefined,
@@ -305,6 +309,53 @@ export default function SalesEntryScreen() {
               })}
             </View>
           ))}
+
+          {/* Crates Section */}
+          <View style={styles.cratesSection}>
+            <Text style={styles.sectionTitle}>Crate Tracking</Text>
+            
+            <View style={styles.cratesRow}>
+              <View style={styles.cratesInputGroup}>
+                <Text style={styles.cratesLabel}>Crates Dropped Off</Text>
+                <View style={styles.cratesInputContainer}>
+                  <Ionicons name="cube-outline" size={20} color="#10B981" />
+                  <TextInput
+                    style={styles.cratesInput}
+                    placeholder="0"
+                    placeholderTextColor="#64748B"
+                    value={cratesDropped}
+                    onChangeText={setCratesDropped}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+              
+              <View style={styles.cratesInputGroup}>
+                <Text style={styles.cratesLabel}>Crates Collected</Text>
+                <View style={styles.cratesInputContainer}>
+                  <Ionicons name="cube" size={20} color="#3B82F6" />
+                  <TextInput
+                    style={styles.cratesInput}
+                    placeholder="0"
+                    placeholderTextColor="#64748B"
+                    value={cratesCollected}
+                    onChangeText={setCratesCollected}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+            </View>
+            
+            <View style={styles.cratesNetRow}>
+              <Text style={styles.cratesNetLabel}>Net Crates:</Text>
+              <Text style={[
+                styles.cratesNetValue,
+                { color: (parseInt(cratesDropped) || 0) - (parseInt(cratesCollected) || 0) > 0 ? '#F59E0B' : '#10B981' }
+              ]}>
+                {(parseInt(cratesDropped) || 0) - (parseInt(cratesCollected) || 0)} left with customer
+              </Text>
+            </View>
+          </View>
 
           {/* Payment Section */}
           <View style={styles.paymentSection}>
@@ -644,5 +695,56 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  cratesSection: {
+    marginBottom: 24,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+  },
+  cratesRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cratesInputGroup: {
+    flex: 1,
+  },
+  cratesLabel: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginBottom: 8,
+  },
+  cratesInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  cratesInput: {
+    flex: 1,
+    height: 48,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  cratesNetRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  cratesNetLabel: {
+    fontSize: 14,
+    color: '#94A3B8',
+  },
+  cratesNetValue: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

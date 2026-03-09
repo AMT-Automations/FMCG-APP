@@ -158,6 +158,8 @@ class ApiService {
       damages?: number;
       unit_price: number;
     }>;
+    crates_dropped?: number;
+    crates_collected?: number;
     cash_collected: number;
     payment_type?: string;
     notes?: string;
@@ -250,6 +252,14 @@ class ApiService {
   async getRoutePerformance(routeId: string, days: number = 7) {
     const response = await this.client.get(`/reports/route-performance/${routeId}`, { params: { days } });
     return response.data;
+  }
+
+  getExportExcelUrl(dateStr?: string, routeId?: string) {
+    const token = this.token;
+    let url = `${this.client.defaults.baseURL}/reports/export/excel?`;
+    if (dateStr) url += `date_str=${dateStr}&`;
+    if (routeId) url += `route_id=${routeId}&`;
+    return url;
   }
 
   // Vehicles
