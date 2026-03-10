@@ -423,6 +423,54 @@ backend:
         agent: "testing"
         comment: "✅ INVOICE & SHORTAGE VERIFICATION COMPLETE - All invoice and shortage features confirmed working with full sales workflow. Features verified: 1) Route start with real IDs working, 2) Sales creation with all required fields (route_id, customer_name, product_name), 3) Automatic invoice generation (INV-20260310-SOWE-0007 format), 4) Accurate shortage calculation (R30.0 for R150 invoice - R120 cash), 5) Complete end-to-end sales process functional. Invoice and shortage tracking working perfectly."
 
+  - task: "ENHANCED Stock-Sales Integration"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ ENHANCED STOCK-SALES INTEGRATION WORKING PERFECTLY - Comprehensive testing confirmed automatic stock reduction when sales are created. Features verified: 1) Sales automatically reduce stock levels (confirmed via stock movements with type 'sale'), 2) Stock movement history tracks all sales with negative quantities, 3) Invoice generation working (INV-20260310-SOWE-0010 format), 4) Complete integration between sales and stock management systems. Stock deductions are processed correctly and logged in movement history."
+
+  - task: "ENHANCED Stock Receive with Deductions"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ ENHANCED STOCK RECEIVE WITH DEDUCTIONS WORKING PERFECTLY - Advanced stock receiving system fully functional. Features tested: 1) Net quantity calculation: 100 - 5 (damages_in_transit) - 3 (rejected_stock) - 2 (spoilt_from_factory) = 90 units correctly applied, 2) Separate movement entries created for each deduction type (damages, rejected, spoilt), 3) Crates tracking (received: 50, returned: 20), 4) Supplier and batch reference tracking, 5) Complete audit trail in stock movements. Enhanced receiving functionality ready for production."
+
+  - task: "ENHANCED Stock Report with Variances"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ ENHANCED STOCK REPORT WITH VARIANCES WORKING PERFECTLY - Comprehensive stock reporting system fully functional. Features verified: 1) Report structure includes all required fields (opening_stock, received, sold, adjustments, closing_stock), 2) All variance types tracked (damages_in_transit, rejected_stock, spoilt_from_factory, stock_take_variance), 3) Crates tracking included (from_manufacturer, returned_to_manufacturer), 4) Summary totals calculated correctly, 5) Complete product breakdown with 9 products reported. Advanced variance tracking operational for all stock activities."
+
+  - task: "ENHANCED Stock Take with Variance"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ ENHANCED STOCK TAKE WITH VARIANCE WORKING PERFECTLY - Advanced stock taking system fully functional. Features tested: 1) Variance calculation: physical count (83) vs system quantity (90) = -7 variance correctly recorded, 2) Stock levels automatically adjusted to match physical count, 3) Variance reason tracking ('Shrinkage - product spoilage during storage'), 4) Variance appears correctly in stock reports, 5) Complete stock take workflow with proper authorization (admin/manager only). Stock variance management system ready for production use."
+
 frontend:
   - task: "Login Screen with PIN"
     implemented: true
@@ -533,10 +581,8 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "NEW FEATURE: Send Report Manually (P0)" 
-  stuck_tasks:
-    - "NEW FEATURE: Send Report Manually (P0)"
+  current_focus: []
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
@@ -561,3 +607,5 @@ agent_communication:
     message: "✅ STOCK MANAGEMENT MODULE COMPREHENSIVE TESTING COMPLETE - All NEW stock management features tested successfully with 100% success rate (24/24 tests passed). COMPREHENSIVE TESTING RESULTS: 1) STOCK MANAGEMENT MODULE (7 endpoints) - POST /api/stock/seed (✅ seeded 9 products), GET /api/stock/levels (✅ retrieved levels with proper structure), POST /api/stock/receive (✅ received 100 White Bread from supplier), POST /api/stock/adjustment (✅ adjusted -10 for damages), POST /api/stock/take (✅ recorded variance -5 units), GET /api/stock/movements (✅ retrieved 5 movements), GET /api/stock/report (✅ generated weekly report). 2) COMPLETE FLOW TEST (8/8 steps) - Admin login ✅, Stock seed ✅, Receive 100 White Bread ✅, Adjust -10 damages ✅, Stock take ✅, Stock report ✅, Driver login ✅, Invoice/shortage verification ✅. 3) INTEGRATION VERIFICATION - Invoice generation (INV-20260310-SOWE-0006 format correct), Cash shortage calculation (R90 total - R72 cash = R18 shortage), Route totals (R610 expected, R512 collected, R98 shortage). ALL STOCK MANAGEMENT FEATURES PRODUCTION-READY with proper authentication, validation, audit trails, and reporting. Backend API testing 100% successful - NO CRITICAL ISSUES FOUND."
   - agent: "testing"
     message: "✅ P0 FEATURES TESTING COMPLETE - Comprehensive testing of NEW P0 features completed with 5/6 test suites passing (83.3% success rate). RESULTS: 1) ✅ PDF EXPORT - GET /api/reports/export/pdf working perfectly, generates valid PDF files (3400+ bytes) with proper PDF headers, supports date parameters and defaults to current date. 2) ✅ EMAIL SETTINGS - GET/POST /api/admin/settings/email working correctly, proper password security (not exposed in GET), admin-only access enforced (403 for drivers). 3) ✅ EMAIL RECIPIENTS CRUD - Full CRUD operations working: GET/POST/PUT/DELETE /api/admin/email-recipients, toggle active status, proper validation and error handling. 4) ❌ SEND REPORT MANUALLY - POST /api/admin/send-report partially working but requires report_types field configuration in recipients (sophisticated feature needing further setup). 5) ✅ STOCK MANAGEMENT VERIFICATION - All stock endpoints confirmed working with corrected product_name field requirement. 6) ✅ INVOICE & SHORTAGE VERIFICATION - Full sales workflow working with automatic invoice generation (INV-20260310-SOWE-0007) and accurate shortage calculations (R30.0). Backend P0 features are production-ready with only minor configuration issue in email report recipients system."
+  - agent: "testing"
+    message: "✅ ENHANCED STOCK MANAGEMENT FEATURES TESTING COMPLETE - Comprehensive testing of all ENHANCED stock management features completed with 4/4 test suites passing (100% success rate). RESULTS: 1) ✅ ENHANCED STOCK-SALES INTEGRATION - Sales automatically reduce stock and create movement history entries (type 'sale'), confirmed via invoice INV-20260310-SOWE-0010 with -5 unit stock reduction. 2) ✅ ENHANCED STOCK RECEIVE WITH DEDUCTIONS - Net quantity calculation working perfectly (100 - 5 damages - 3 rejected - 2 spoilt = 90 net), separate movement entries for each deduction type, crates tracking (50 received, 20 returned). 3) ✅ ENHANCED STOCK REPORT WITH VARIANCES - Complete variance tracking (damages_in_transit, rejected_stock, spoilt_from_factory, stock_take_variance), crates reporting (from_manufacturer, returned_to_manufacturer), comprehensive 9-product report structure. 4) ✅ ENHANCED STOCK TAKE WITH VARIANCE - Variance calculation working (-7 units), stock adjusted to physical count (90→83), variance properly recorded in stock reports. ALL ENHANCED STOCK MANAGEMENT FEATURES ARE PRODUCTION-READY with full audit trails, proper authorization, and comprehensive variance tracking."

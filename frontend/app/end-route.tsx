@@ -60,14 +60,40 @@ export default function EndRouteScreen() {
 
     setEnding(true);
     try {
-      await api.endDailyRoute(activeRoute.id, {
+      const result = await api.endDailyRoute(activeRoute.id, {
         closing_km: closingKmNum,
         crates_in: parseInt(cratesIn),
         damages_count: damagesCount ? parseInt(damagesCount) : 0,
         fuel_used: fuelUsed ? parseFloat(fuelUsed) : undefined,
         notes: notes || undefined,
       });
-      router.back();
+      
+      // Calculate route summary
+      const kmTraveled = closingKmNum - activeRoute.opening_km;
+      const cratesBalance = activeRoute.crates_out - parseInt(cratesIn);
+      
+      // Show prominent Route Ended confirmation
+      Alert.alert(
+        '✅ ROUTE COMPLETED',
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `📍 Route: ${activeRoute.route_name}\n` +
+        `🚗 Vehicle: ${activeRoute.vehicle_name || 'N/A'}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `📊 ROUTE SUMMARY\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `🛣️ Distance: ${kmTraveled.toFixed(1)} km\n` +
+        `📦 Crates Out: ${activeRoute.crates_out}\n` +
+        `📦 Crates In: ${cratesIn}\n` +
+        `${cratesBalance !== 0 ? `⚠️ Crates Balance: ${cratesBalance > 0 ? '+' : ''}${cratesBalance}\n` : ''}` +
+        `🧾 Total Sales: ${activeRoute.sales_count}\n` +
+        `💰 Total Collected: R ${(activeRoute.total_collected || 0).toFixed(2)}\n` +
+        `${activeRoute.total_shortage > 0 ? `⚠️ Total Shortage: R ${activeRoute.total_shortage.toFixed(2)}\n` : ''}` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `Route ended at ${new Date().toLocaleTimeString()}`,
+        [
+          { text: 'Done', onPress: () => router.replace('/(tabs)') }
+        ]
+      );
     } catch (error: any) {
       Alert.alert('Error', error.response?.data?.detail || 'Failed to end route');
     } finally {

@@ -58,7 +58,17 @@ export default function StockManagement() {
   const [selectedProduct, setSelectedProduct] = useState<StockLevel | null>(null);
   
   // Form states
-  const [receiveForm, setReceiveForm] = useState({ quantity: '', supplier: '', batch_reference: '', notes: '' });
+  const [receiveForm, setReceiveForm] = useState({ 
+    quantity: '', 
+    supplier: '', 
+    batch_reference: '', 
+    damages_in_transit: '',
+    rejected_stock: '',
+    spoilt_from_factory: '',
+    crates_received: '',
+    crates_returned: '',
+    notes: '' 
+  });
   const [adjustForm, setAdjustForm] = useState({ quantity: '', reason: 'damages', notes: '' });
   const [takeForm, setTakeForm] = useState({ physical_count: '', variance_reason: '' });
 
@@ -97,7 +107,17 @@ export default function StockManagement() {
   // Open receive modal for a product
   const openReceiveModal = (product: StockLevel) => {
     setSelectedProduct(product);
-    setReceiveForm({ quantity: '', supplier: '', batch_reference: '', notes: '' });
+    setReceiveForm({ 
+      quantity: '', 
+      supplier: '', 
+      batch_reference: '', 
+      damages_in_transit: '',
+      rejected_stock: '',
+      spoilt_from_factory: '',
+      crates_received: '',
+      crates_returned: '',
+      notes: '' 
+    });
     setReceiveModalVisible(true);
   };
 
@@ -122,17 +142,38 @@ export default function StockManagement() {
       return;
     }
     
+    const damages = parseInt(receiveForm.damages_in_transit) || 0;
+    const rejected = parseInt(receiveForm.rejected_stock) || 0;
+    const spoilt = parseInt(receiveForm.spoilt_from_factory) || 0;
+    const totalDeductions = damages + rejected + spoilt;
+    const netQty = parseInt(receiveForm.quantity) - totalDeductions;
+    
     setSaving(true);
     try {
-      await api.receiveStock({
+      const result = await api.receiveStock({
         product_id: selectedProduct.product_id,
         product_name: selectedProduct.product_name,
         quantity: parseInt(receiveForm.quantity),
         supplier: receiveForm.supplier || undefined,
         batch_reference: receiveForm.batch_reference || undefined,
+        damages_in_transit: damages,
+        rejected_stock: rejected,
+        spoilt_from_factory: spoilt,
+        crates_received: parseInt(receiveForm.crates_received) || 0,
+        crates_returned: parseInt(receiveForm.crates_returned) || 0,
         notes: receiveForm.notes || undefined,
       });
-      Alert.alert('Success', `Received ${receiveForm.quantity} ${selectedProduct.product_name}`);
+      
+      let message = `Received: ${receiveForm.quantity}\n`;
+      if (totalDeductions > 0) {
+        message += `Deductions:\n`;
+        if (damages > 0) message += `  - Damages in transit: ${damages}\n`;
+        if (rejected > 0) message += `  - Rejected: ${rejected}\n`;
+        if (spoilt > 0) message += `  - Spoilt from factory: ${spoilt}\n`;
+        message += `Net Added: ${netQty}`;
+      }
+      
+      Alert.alert('Stock Received', message);
       setReceiveModalVisible(false);
       loadData();
     } catch (error: any) {
@@ -445,80 +486,154 @@ export default function StockManagement() {
       {/* Receive Stock Modal */}
       <Modal visible={receiveModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Receive Stock</Text>
-              <TouchableOpacity onPress={() => setReceiveModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#94A3B8" />
+          <ScrollView style={styles.modalScrollContent}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Receive Stock</Text>
+                <TouchableOpacity onPress={() => setReceiveModalVisible(false)}>
+                  <Ionicons name="close" size={24} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+              
+              {selectedProduct && (
+                <View style={styles.selectedProductInfo}>
+                  <Text style={styles.selectedProductName}>{selectedProduct.product_name}</Text>
+                  <Text style={styles.selectedProductQty}>Current Stock: {selectedProduct.current_quantity}</Text>
+                </View>
+              )}
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Quantity Received *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="Enter quantity"
+                  placeholderTextColor="#64748B"
+                  value={receiveForm.quantity}
+                  onChangeText={(text) => setReceiveForm({ ...receiveForm, quantity: text })}
+                  keyboardType="numeric"
+                />
+              </View>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Supplier</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="Supplier name"
+                  placeholderTextColor="#64748B"
+                  value={receiveForm.supplier}
+                  onChangeText={(text) => setReceiveForm({ ...receiveForm, supplier: text })}
+                />
+              </View>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Batch Reference</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="Batch/Invoice number"
+                  placeholderTextColor="#64748B"
+                  value={receiveForm.batch_reference}
+                  onChangeText={(text) => setReceiveForm({ ...receiveForm, batch_reference: text })}
+                />
+              </View>
+
+              {/* Deductions Section */}
+              <View style={styles.sectionDivider}>
+                <Text style={styles.sectionDividerText}>⚠️ Deductions (if any)</Text>
+              </View>
+              
+              <View style={styles.formRow}>
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Damages In-Transit</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="0"
+                    placeholderTextColor="#64748B"
+                    value={receiveForm.damages_in_transit}
+                    onChangeText={(text) => setReceiveForm({ ...receiveForm, damages_in_transit: text })}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Rejected Stock</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="0"
+                    placeholderTextColor="#64748B"
+                    value={receiveForm.rejected_stock}
+                    onChangeText={(text) => setReceiveForm({ ...receiveForm, rejected_stock: text })}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Spoilt from Factory</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="0"
+                  placeholderTextColor="#64748B"
+                  value={receiveForm.spoilt_from_factory}
+                  onChangeText={(text) => setReceiveForm({ ...receiveForm, spoilt_from_factory: text })}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              {/* Crates Section */}
+              <View style={styles.sectionDivider}>
+                <Text style={styles.sectionDividerText}>📦 Crates Tracking</Text>
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Crates Received</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="0"
+                    placeholderTextColor="#64748B"
+                    value={receiveForm.crates_received}
+                    onChangeText={(text) => setReceiveForm({ ...receiveForm, crates_received: text })}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={styles.formGroupHalf}>
+                  <Text style={styles.formLabel}>Crates Returned</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="0"
+                    placeholderTextColor="#64748B"
+                    value={receiveForm.crates_returned}
+                    onChangeText={(text) => setReceiveForm({ ...receiveForm, crates_returned: text })}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Notes</Text>
+                <TextInput
+                  style={[styles.formInput, styles.formTextArea]}
+                  placeholder="Additional notes"
+                  placeholderTextColor="#64748B"
+                  value={receiveForm.notes}
+                  onChangeText={(text) => setReceiveForm({ ...receiveForm, notes: text })}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+              
+              <TouchableOpacity
+                style={[styles.submitButton, saving && styles.submitButtonDisabled]}
+                onPress={submitReceive}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.submitButtonText}>Receive Stock</Text>
+                )}
               </TouchableOpacity>
             </View>
-            
-            {selectedProduct && (
-              <View style={styles.selectedProductInfo}>
-                <Text style={styles.selectedProductName}>{selectedProduct.product_name}</Text>
-                <Text style={styles.selectedProductQty}>Current Stock: {selectedProduct.current_quantity}</Text>
-              </View>
-            )}
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Quantity Received *</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="Enter quantity"
-                placeholderTextColor="#64748B"
-                value={receiveForm.quantity}
-                onChangeText={(text) => setReceiveForm({ ...receiveForm, quantity: text })}
-                keyboardType="numeric"
-              />
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Supplier</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="Supplier name"
-                placeholderTextColor="#64748B"
-                value={receiveForm.supplier}
-                onChangeText={(text) => setReceiveForm({ ...receiveForm, supplier: text })}
-              />
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Batch Reference</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="Batch/Invoice number"
-                placeholderTextColor="#64748B"
-                value={receiveForm.batch_reference}
-                onChangeText={(text) => setReceiveForm({ ...receiveForm, batch_reference: text })}
-              />
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Notes</Text>
-              <TextInput
-                style={[styles.formInput, styles.formTextArea]}
-                placeholder="Additional notes"
-                placeholderTextColor="#64748B"
-                value={receiveForm.notes}
-                onChangeText={(text) => setReceiveForm({ ...receiveForm, notes: text })}
-                multiline
-                numberOfLines={3}
-              />
-            </View>
-            
-            <TouchableOpacity
-              style={[styles.submitButton, saving && styles.submitButtonDisabled]}
-              onPress={submitReceive}
-              disabled={saving}
-            >
-              {saving ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.submitButtonText}>Receive Stock</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -875,12 +990,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'flex-end',
   },
+  modalScrollContent: {
+    maxHeight: '90%',
+  },
   modalContent: {
     backgroundColor: '#1E293B',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    maxHeight: '85%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -908,6 +1025,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#10B981',
     marginTop: 4,
+  },
+  sectionDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+    marginVertical: 16,
+    paddingTop: 12,
+  },
+  sectionDividerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F59E0B',
+  },
+  formRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  formGroupHalf: {
+    flex: 1,
   },
   formGroup: {
     marginBottom: 16,

@@ -352,7 +352,19 @@ class ApiService {
     return response.data;
   }
 
-  async receiveStock(data: { product_id: string; product_name: string; quantity: number; supplier?: string; batch_reference?: string; notes?: string }) {
+  async receiveStock(data: { 
+    product_id: string; 
+    product_name: string; 
+    quantity: number; 
+    supplier?: string; 
+    batch_reference?: string; 
+    damages_in_transit?: number;
+    rejected_stock?: number;
+    spoilt_from_factory?: number;
+    crates_received?: number;
+    crates_returned?: number;
+    notes?: string 
+  }) {
     const response = await this.client.post('/stock/receive', data);
     return response.data;
   }

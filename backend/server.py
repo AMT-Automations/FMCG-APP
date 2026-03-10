@@ -259,6 +259,11 @@ class StockReceiveCreate(BaseModel):
     quantity: int
     supplier: Optional[str] = None
     batch_reference: Optional[str] = None
+    damages_in_transit: int = 0  # Damaged during transport
+    rejected_stock: int = 0  # Rejected due to quality issues
+    spoilt_from_factory: int = 0  # Spoilt/expired from factory
+    crates_received: int = 0  # Crates received from manufacturer
+    crates_returned: int = 0  # Empty crates returned to manufacturer
     notes: Optional[str] = None
 
 class StockTakeCreate(BaseModel):
@@ -941,6 +946,29 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
                 {"_id": ObjectId(sale.customer_id)},
                 {"$inc": {"balance": balance_change}}
             )
+    
+    # Deduct stock for each item sold
+    for item in sale.items:
+        net_sold = item.quantity_delivered - item.quantity_returned
+        if net_sold > 0:
+            # Reduce stock
+            await db.stock.update_one(
+                {"product_id": item.product_id},
+                {"$inc": {"quantity": -net_sold}}
+            )
+            # Log the movement
+            await db.stock_movements.insert_one({
+                "movement_type": "sale",
+                "product_id": item.product_id,
+                "product_name": item.product_name,
+                "quantity": -net_sold,
+                "sale_id": str(sale_doc["_id"]),
+                "invoice_number": invoice_number,
+                "customer_name": sale.customer_name,
+                "driver_id": current_user["id"],
+                "driver_name": current_user["name"],
+                "created_at": datetime.utcnow()
+            })
     
     return str_id(sale_doc)
 
@@ -2135,22 +2163,32 @@ async def receive_stock(data: StockReceiveCreate, current_user: dict = Depends(g
     if not is_admin_or_manager(current_user):
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
     
-    # Update or create stock record
+    # Calculate net quantity after deducting damages/rejects/spoilt
+    total_deductions = data.damages_in_transit + data.rejected_stock + data.spoilt_from_factory
+    net_quantity = data.quantity - total_deductions
+    
+    # Update or create stock record with net quantity
     await db.stock.update_one(
         {"product_id": data.product_id},
         {
-            "$inc": {"quantity": data.quantity},
+            "$inc": {"quantity": net_quantity},
             "$set": {"product_name": data.product_name, "updated_at": datetime.utcnow()}
         },
         upsert=True
     )
     
-    # Log the movement
+    # Log the receive movement
     movement = {
         "movement_type": "receive",
         "product_id": data.product_id,
         "product_name": data.product_name,
         "quantity": data.quantity,
+        "net_quantity": net_quantity,
+        "damages_in_transit": data.damages_in_transit,
+        "rejected_stock": data.rejected_stock,
+        "spoilt_from_factory": data.spoilt_from_factory,
+        "crates_received": data.crates_received,
+        "crates_returned": data.crates_returned,
         "supplier": data.supplier,
         "batch_reference": data.batch_reference,
         "notes": data.notes,
@@ -2160,6 +2198,60 @@ async def receive_stock(data: StockReceiveCreate, current_user: dict = Depends(g
     }
     await db.stock_movements.insert_one(movement)
     
+    # Log deductions separately for accountability if any
+    if data.damages_in_transit > 0:
+        await db.stock_movements.insert_one({
+            "movement_type": "damages_in_transit",
+            "product_id": data.product_id,
+            "product_name": data.product_name,
+            "quantity": -data.damages_in_transit,
+            "supplier": data.supplier,
+            "batch_reference": data.batch_reference,
+            "personnel_id": current_user["id"],
+            "personnel_name": current_user["name"],
+            "created_at": datetime.utcnow()
+        })
+    
+    if data.rejected_stock > 0:
+        await db.stock_movements.insert_one({
+            "movement_type": "rejected_stock",
+            "product_id": data.product_id,
+            "product_name": data.product_name,
+            "quantity": -data.rejected_stock,
+            "supplier": data.supplier,
+            "batch_reference": data.batch_reference,
+            "personnel_id": current_user["id"],
+            "personnel_name": current_user["name"],
+            "created_at": datetime.utcnow()
+        })
+    
+    if data.spoilt_from_factory > 0:
+        await db.stock_movements.insert_one({
+            "movement_type": "spoilt_from_factory",
+            "product_id": data.product_id,
+            "product_name": data.product_name,
+            "quantity": -data.spoilt_from_factory,
+            "supplier": data.supplier,
+            "batch_reference": data.batch_reference,
+            "personnel_id": current_user["id"],
+            "personnel_name": current_user["name"],
+            "created_at": datetime.utcnow()
+        })
+    
+    # Update global crates tracking
+    if data.crates_received > 0 or data.crates_returned > 0:
+        await db.crates_tracking.update_one(
+            {"type": "global"},
+            {
+                "$inc": {
+                    "crates_from_manufacturer": data.crates_received,
+                    "crates_returned_to_manufacturer": data.crates_returned
+                },
+                "$set": {"updated_at": datetime.utcnow()}
+            },
+            upsert=True
+        )
+    
     # Get updated stock level
     stock = await db.stock.find_one({"product_id": data.product_id})
     
@@ -2168,7 +2260,13 @@ async def receive_stock(data: StockReceiveCreate, current_user: dict = Depends(g
         "product_id": data.product_id,
         "product_name": data.product_name,
         "quantity_received": data.quantity,
-        "new_total": stock.get("quantity", 0) if stock else data.quantity
+        "damages_in_transit": data.damages_in_transit,
+        "rejected_stock": data.rejected_stock,
+        "spoilt_from_factory": data.spoilt_from_factory,
+        "net_quantity_added": net_quantity,
+        "crates_received": data.crates_received,
+        "crates_returned": data.crates_returned,
+        "new_total": stock.get("quantity", 0) if stock else net_quantity
     }
 
 @api_router.post("/stock/adjustment")
@@ -2292,7 +2390,7 @@ async def get_stock_movements(
 
 @api_router.get("/stock/report")
 async def get_stock_report(current_user: dict = Depends(get_current_user)):
-    """Generate stock report with opening, received, sold, adjustments, closing"""
+    """Generate stock report with opening, received, sold, adjustments, closing, and variances"""
     if not is_admin_or_manager(current_user):
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
     
@@ -2305,6 +2403,11 @@ async def get_stock_report(current_user: dict = Depends(get_current_user)):
     week_start = today - timedelta(days=days_since_monday)
     week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
     
+    total_damages_transit = 0
+    total_rejected = 0
+    total_spoilt = 0
+    total_stock_take_variance = 0
+    
     for product in products:
         product_id = str(product["_id"])
         
@@ -2314,28 +2417,43 @@ async def get_stock_report(current_user: dict = Depends(get_current_user)):
             "created_at": {"$gte": week_start}
         }).to_list(500)
         
-        # Calculate totals
-        received = sum(m.get("quantity", 0) for m in movements if m.get("movement_type") == "receive")
+        # Calculate totals by movement type
+        received = sum(m.get("net_quantity", m.get("quantity", 0)) for m in movements if m.get("movement_type") == "receive")
         adjustments = sum(m.get("quantity", 0) for m in movements if m.get("movement_type") == "adjustment")
+        damages_transit = sum(abs(m.get("quantity", 0)) for m in movements if m.get("movement_type") == "damages_in_transit")
+        rejected = sum(abs(m.get("quantity", 0)) for m in movements if m.get("movement_type") == "rejected_stock")
+        spoilt = sum(abs(m.get("quantity", 0)) for m in movements if m.get("movement_type") == "spoilt_from_factory")
         
-        # Get sales from sales collection
-        sales = await db.sales.find({
-            "created_at": {"$gte": week_start},
-            "is_voided": {"$ne": True}
-        }).to_list(2000)
+        # Stock take variances
+        stock_takes = [m for m in movements if m.get("movement_type") == "stock_take"]
+        variance = sum(m.get("variance", 0) for m in stock_takes)
         
-        sold = 0
-        for sale in sales:
-            for item in sale.get("items", []):
-                if item.get("product_id") == product_id:
-                    sold += (item.get("quantity_delivered", 0) - item.get("quantity_returned", 0))
+        total_damages_transit += damages_transit
+        total_rejected += rejected
+        total_spoilt += spoilt
+        total_stock_take_variance += variance
+        
+        # Get sales from stock movements (now tracked there)
+        sold = abs(sum(m.get("quantity", 0) for m in movements if m.get("movement_type") == "sale"))
+        
+        # If no sales in movements, check sales collection
+        if sold == 0:
+            sales = await db.sales.find({
+                "created_at": {"$gte": week_start},
+                "is_voided": {"$ne": True}
+            }).to_list(2000)
+            
+            for sale in sales:
+                for item in sale.get("items", []):
+                    if item.get("product_id") == product_id:
+                        sold += (item.get("quantity_delivered", 0) - item.get("quantity_returned", 0))
         
         # Current stock
         stock = await db.stock.find_one({"product_id": product_id})
         closing = stock.get("quantity", 0) if stock else 0
         
-        # Calculate opening (closing - received - adjustments + sold)
-        opening = closing - received - adjustments + sold
+        # Calculate opening (closing - received - adjustments + sold + damages + rejected + spoilt)
+        opening = closing - received - adjustments + sold + damages_transit + rejected + spoilt
         
         report.append({
             "product_id": product_id,
@@ -2345,8 +2463,15 @@ async def get_stock_report(current_user: dict = Depends(get_current_user)):
             "received": received,
             "sold": sold,
             "adjustments": adjustments,
+            "damages_in_transit": damages_transit,
+            "rejected_stock": rejected,
+            "spoilt_from_factory": spoilt,
+            "stock_take_variance": variance,
             "closing_stock": closing
         })
+    
+    # Get crates tracking
+    crates = await db.crates_tracking.find_one({"type": "global"})
     
     return {
         "report_date": today.isoformat(),
@@ -2356,7 +2481,16 @@ async def get_stock_report(current_user: dict = Depends(get_current_user)):
             "total_products": len(report),
             "total_received": sum(p["received"] for p in report),
             "total_sold": sum(p["sold"] for p in report),
-            "total_adjustments": sum(p["adjustments"] for p in report)
+            "total_adjustments": sum(p["adjustments"] for p in report),
+            "total_damages_in_transit": total_damages_transit,
+            "total_rejected_stock": total_rejected,
+            "total_spoilt_from_factory": total_spoilt,
+            "total_stock_take_variance": total_stock_take_variance
+        },
+        "crates": {
+            "from_manufacturer": crates.get("crates_from_manufacturer", 0) if crates else 0,
+            "returned_to_manufacturer": crates.get("crates_returned_to_manufacturer", 0) if crates else 0,
+            "net_crates": (crates.get("crates_from_manufacturer", 0) - crates.get("crates_returned_to_manufacturer", 0)) if crates else 0
         }
     }
 
