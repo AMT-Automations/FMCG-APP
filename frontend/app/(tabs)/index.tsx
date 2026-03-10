@@ -282,6 +282,17 @@ export default function HomeScreen() {
               </View>
               <Text style={styles.actionText}>Reports</Text>
             </TouchableOpacity>
+            {(user?.role === 'admin' || user?.role === 'manager') && (
+              <TouchableOpacity
+                style={styles.actionCard}
+                onPress={() => router.push('/stock')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: '#1E3A3B' }]}>
+                  <Ionicons name="cube" size={24} color="#06B6D4" />
+                </View>
+                <Text style={styles.actionText}>Stock</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.actionCard}
               onPress={() => router.push('/(tabs)/profile')}

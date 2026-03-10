@@ -155,22 +155,32 @@ export default function SalesEntryScreen() {
         notes: notes || undefined,
       });
       
-      // Calculate shortage for display
-      const invoiceTotal = saleItems.reduce((sum, item) => {
+      // Get values for display
+      const invoiceNumber = result.invoice_number || 'N/A';
+      const invoiceTotal = result.total_amount || saleItems.reduce((sum, item) => {
         return sum + (item.quantity_delivered - item.quantity_returned) * item.unit_price;
       }, 0);
-      const shortageAmount = Math.max(0, invoiceTotal - parseFloat(cashCollected));
+      const cashReceived = parseFloat(cashCollected);
+      const shortageAmount = result.shortage_amount || Math.max(0, invoiceTotal - cashReceived);
       
-      // Show success with invoice number and shortage info
-      let successMessage = `Invoice: ${result.invoice_number}\n\nTotal: R ${invoiceTotal.toFixed(2)}\nReceived: R ${parseFloat(cashCollected).toFixed(2)}`;
+      // Show detailed success with invoice number prominently displayed
+      const title = `✅ SALE RECORDED\n\n📄 ${invoiceNumber}`;
+      let message = `Customer: ${customerName}\n\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `Invoice Total:    R ${invoiceTotal.toFixed(2)}\n`;
+      message += `Cash Received:  R ${cashReceived.toFixed(2)}\n`;
       if (shortageAmount > 0) {
-        successMessage += `\nShortage: R ${shortageAmount.toFixed(2)}`;
+        message += `━━━━━━━━━━━━━━━━━━━━\n`;
+        message += `⚠️ SHORTAGE:      R ${shortageAmount.toFixed(2)}\n`;
       }
+      message += `━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `\nInvoice #: ${invoiceNumber}`;
       
-      Alert.alert('Sale Recorded', successMessage, [
-        { text: 'OK', onPress: () => router.back() },
+      Alert.alert(title, message, [
+        { text: 'Done', onPress: () => router.back() },
       ]);
     } catch (error: any) {
+      console.error('Sale error:', error);
       Alert.alert('Error', error.response?.data?.detail || 'Failed to record sale');
     } finally {
       setSaving(false);

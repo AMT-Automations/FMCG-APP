@@ -312,11 +312,19 @@ export default function ReportsScreen() {
                     <Text style={styles.historyStatText}>{route.sales_count} sales</Text>
                   </View>
                   <View style={styles.historyStat}>
-                    <Ionicons name="cash-outline" size={14} color="#64748B" />
-                    <Text style={styles.historyStatText}>
+                    <Ionicons name="cash-outline" size={14} color="#10B981" />
+                    <Text style={[styles.historyStatText, { color: '#10B981' }]}>
                       {formatCurrency(route.total_collected)}
                     </Text>
                   </View>
+                  {route.total_shortage > 0 && (
+                    <View style={styles.historyStat}>
+                      <Ionicons name="warning-outline" size={14} color="#F59E0B" />
+                      <Text style={[styles.historyStatText, { color: '#F59E0B' }]}>
+                        -{formatCurrency(route.total_shortage)}
+                      </Text>
+                    </View>
+                  )}
                   {route.km_traveled && (
                     <View style={styles.historyStat}>
                       <Ionicons name="speedometer-outline" size={14} color="#64748B" />
