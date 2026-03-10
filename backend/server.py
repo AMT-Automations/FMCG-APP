@@ -1,12 +1,13 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import io
+import csv
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -21,6 +22,11 @@ import hashlib
 import jwt
 from bson import ObjectId
 import xlsxwriter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -226,6 +232,7 @@ class SaleUpdate(BaseModel):
 
 class SaleResponse(BaseModel):
     id: str
+    invoice_number: Optional[str] = None  # Auto-generated invoice number
     route_id: str
     customer_id: str
     customer_name: str
@@ -233,15 +240,58 @@ class SaleResponse(BaseModel):
     driver_name: str
     items: List[dict]
     total_amount: float
+    cash_collected: float
+    shortage_amount: float = 0  # Invoice Total - Cash Collected
     crates_dropped: int = 0
     crates_collected: int = 0
-    cash_collected: float
     payment_type: str
     delivery_status: str = "delivered"
     notes: Optional[str]
     is_voided: bool = False
     void_reason: Optional[str] = None
     created_at: datetime
+
+# ==================== STOCK MANAGEMENT MODELS ====================
+
+class StockReceiveCreate(BaseModel):
+    product_id: str
+    product_name: str
+    quantity: int
+    supplier: Optional[str] = None
+    batch_reference: Optional[str] = None
+    notes: Optional[str] = None
+
+class StockTakeCreate(BaseModel):
+    product_id: str
+    product_name: str
+    system_quantity: int
+    physical_count: int
+    variance_reason: Optional[str] = None
+
+class StockAdjustmentCreate(BaseModel):
+    product_id: str
+    product_name: str
+    adjustment_quantity: int  # Positive or negative
+    reason: str  # damages, spoilage, theft, correction, other
+    notes: Optional[str] = None
+
+class StockMovementResponse(BaseModel):
+    id: str
+    movement_type: str  # receive, sale, adjustment, take
+    product_id: str
+    product_name: str
+    quantity: int
+    reference: Optional[str]
+    personnel_id: str
+    personnel_name: str
+    created_at: datetime
+
+# ==================== EMAIL RECIPIENT MANAGEMENT ====================
+
+class EmailRecipientCreate(BaseModel):
+    email: str
+    name: Optional[str] = None
+    report_types: List[str]  # sales, stock, finance, daily, weekly
 
 class DailyRouteStart(BaseModel):
     route_id: str
@@ -285,6 +335,8 @@ class DailyRouteResponse(BaseModel):
     status: str  # active, completed
     sales_count: int
     total_collected: float
+    total_expected: float = 0  # Total invoice amounts
+    total_shortage: float = 0  # Total shortages (Expected - Collected)
 
 # ==================== AUTH HELPERS ====================
 
@@ -822,7 +874,30 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
         for item in sale.items
     )
     
+    # Calculate shortage (Invoice Total - Cash Collected)
+    shortage_amount = max(0, total - sale.cash_collected)
+    
+    # Generate automatic invoice number: INV-YYYYMMDD-ROUTE-####
+    today = datetime.utcnow()
+    today_str = today.strftime("%Y%m%d")
+    
+    # Get route code (first 4 chars of route name or route_id)
+    route = await db.routes.find_one({"_id": ObjectId(sale.route_id)})
+    route_code = route["name"][:4].upper().replace(" ", "") if route else sale.route_id[:4].upper()
+    
+    # Count sales for today to generate sequence number
+    start_of_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = today.replace(hour=23, minute=59, second=59, microsecond=999999)
+    daily_sales_count = await db.sales.count_documents({
+        "created_at": {"$gte": start_of_day, "$lte": end_of_day}
+    })
+    sequence_num = daily_sales_count + 1
+    
+    # Format: INV-YYYYMMDD-ROUTE-0001
+    invoice_number = f"INV-{today_str}-{route_code}-{sequence_num:04d}"
+    
     sale_doc = {
+        "invoice_number": invoice_number,
         "route_id": sale.route_id,
         "customer_id": sale.customer_id,
         "customer_name": sale.customer_name,
@@ -833,6 +908,7 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
         "crates_dropped": sale.crates_dropped,
         "crates_collected": sale.crates_collected,
         "cash_collected": sale.cash_collected,
+        "shortage_amount": shortage_amount,
         "payment_type": sale.payment_type,
         "delivery_status": sale.delivery_status,
         "notes": sale.notes,
@@ -843,13 +919,15 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
     result = await db.sales.insert_one(sale_doc)
     sale_doc["_id"] = result.inserted_id
     
-    # Update daily route totals including crates
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    # Update daily route totals including crates and shortage tracking
+    today_date_str = datetime.utcnow().strftime("%Y-%m-%d")
     await db.daily_routes.update_one(
-        {"driver_id": current_user["id"], "date": today, "status": "active"},
+        {"driver_id": current_user["id"], "date": today_date_str, "status": "active"},
         {"$inc": {
             "sales_count": 1, 
             "total_collected": sale.cash_collected,
+            "total_expected": total,
+            "total_shortage": shortage_amount,
             "total_crates_dropped": sale.crates_dropped,
             "total_crates_collected": sale.crates_collected
         }}
@@ -1942,8 +2020,18 @@ async def email_report(
                 attachment.add_header('Content-Disposition', f'attachment; filename={request.report_type}_report_{date_str}.xlsx')
                 msg.attach(attachment)
             
-            server = smtplib.SMTP(email_config.get('smtp_server', 'smtp.gmail.com'), email_config.get('smtp_port', 587))
-            server.starttls()
+            # Support both SSL (port 465) and TLS (port 587)
+            smtp_port = email_config.get('smtp_port', 465)
+            smtp_server = email_config.get('smtp_server', 'mail.mzansipc.co.za')
+            
+            if smtp_port == 465:
+                # Use SSL
+                server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+            else:
+                # Use TLS
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                server.starttls()
+            
             server.login(email_config.get('sender_email'), email_config.get('sender_password'))
             server.send_message(msg)
             server.quit()

@@ -11,7 +11,7 @@ import traceback
 from datetime import datetime, date
 
 class MzansiAPITester:
-    def __init__(self, base_url="https://vehicle-route-hub.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://cash-ops-tracker.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.admin_token = None
         self.driver_token = None

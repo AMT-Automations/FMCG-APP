@@ -132,7 +132,7 @@ export default function SalesEntryScreen() {
     }
 
     if (!cashCollected) {
-      Alert.alert('Error', 'Please enter cash collected amount');
+      Alert.alert('Error', 'Please enter cash received amount');
       return;
     }
 
@@ -143,7 +143,7 @@ export default function SalesEntryScreen() {
 
     setSaving(true);
     try {
-      await api.createSale({
+      const result = await api.createSale({
         route_id: activeRoute.route_id,
         customer_id: customerId || '',
         customer_name: customerName,
@@ -154,7 +154,20 @@ export default function SalesEntryScreen() {
         payment_type: paymentType,
         notes: notes || undefined,
       });
-      Alert.alert('Success', 'Sale recorded successfully', [
+      
+      // Calculate shortage for display
+      const invoiceTotal = saleItems.reduce((sum, item) => {
+        return sum + (item.quantity_delivered - item.quantity_returned) * item.unit_price;
+      }, 0);
+      const shortageAmount = Math.max(0, invoiceTotal - parseFloat(cashCollected));
+      
+      // Show success with invoice number and shortage info
+      let successMessage = `Invoice: ${result.invoice_number}\n\nTotal: R ${invoiceTotal.toFixed(2)}\nReceived: R ${parseFloat(cashCollected).toFixed(2)}`;
+      if (shortageAmount > 0) {
+        successMessage += `\nShortage: R ${shortageAmount.toFixed(2)}`;
+      }
+      
+      Alert.alert('Sale Recorded', successMessage, [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (error: any) {
@@ -388,12 +401,12 @@ export default function SalesEntryScreen() {
             <Text style={styles.sectionTitle}>Payment</Text>
 
             <View style={styles.totalCard}>
-              <Text style={styles.totalLabel}>Total Amount</Text>
+              <Text style={styles.totalLabel}>Invoice Total</Text>
               <Text style={styles.totalValue}>R {total.toFixed(2)}</Text>
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputGroupLabel}>Cash Collected *</Text>
+              <Text style={styles.inputGroupLabel}>Cash Received *</Text>
               <View style={styles.cashInputContainer}>
                 <Text style={styles.currencyPrefix}>R</Text>
                 <TextInput
@@ -406,6 +419,19 @@ export default function SalesEntryScreen() {
                 />
               </View>
             </View>
+
+            {/* Shortage Display */}
+            {parseFloat(cashCollected || '0') < total && parseFloat(cashCollected || '0') > 0 && (
+              <View style={styles.shortageCard}>
+                <View style={styles.shortageRow}>
+                  <Ionicons name="warning" size={20} color="#F59E0B" />
+                  <Text style={styles.shortageLabel}>Shortage Amount</Text>
+                </View>
+                <Text style={styles.shortageValue}>
+                  R {(total - parseFloat(cashCollected || '0')).toFixed(2)}
+                </Text>
+              </View>
+            )}
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputGroupLabel}>Payment Type</Text>
@@ -586,15 +612,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#3B82F6',
   },
   quantityInput: {
-    width: 60,
+    width: 50,
     height: 36,
     backgroundColor: '#0F172A',
     borderRadius: 8,
-    marginHorizontal: 8,
+    marginHorizontal: 6,
     textAlign: 'center',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
+    padding: 0,
   },
   paymentSection: {
     marginBottom: 24,
@@ -621,6 +648,31 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginTop: 4,
+  },
+  shortageCard: {
+    backgroundColor: '#422006',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  shortageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  shortageLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#F59E0B',
+  },
+  shortageValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#F59E0B',
+    textAlign: 'center',
   },
   inputGroup: {
     marginBottom: 16,

@@ -1,194 +1,373 @@
 <analysis>
 
-**original_problem_statement:** The user wants to build a comprehensive mobile app for a distribution route sales business called Mzansi Distribution Tracker.
+**original_problem_statement:** The user has provided a comprehensive list of fixes and new features to be implemented, aiming to transform the app into a complete operational tool for route sales, cash accountability, inventory management, and reporting.
 
 **PRODUCT REQUIREMENTS:**
-- **User Roles:** Admin/Manager, Driver, Conductor.
-- **Core Features:**
-    - **Route Management:** Assign and select routes, add new customers on the fly.
-    - **User Identification:** Login for registered users (Driver, Conductor).
-    - **Sales Recording:** Log products sold, quantities delivered/collected, damages, and cash collected per customer.
-    - **Vehicle & Route Tracking:** Record opening/closing kilometers, vehicle checks.
-    - **Stock & Inventory:** Manage stock levels, track crates, and handle adjustments.
-    - **Reporting & Analytics:** Daily summaries, route performance, customer history, cash reports.
-    - **Product Management:** Ability to add, edit, and manage the list of available products.
-- **Role-Based Access Control (RBAC):** Admins/Managers have full access to manage users, routes, and customers. Drivers have restricted access to their assigned routes and sales data.
-- **Concurrent Operations:** Support for multiple routes running concurrently with different drivers and vehicles.
-- **Branding:** Integrate a custom company logo into the app.
+1.  **Reporting Export Fix (High Priority):**
+    *   Ensure reports can be exported to Microsoft Excel (.xlsx), Google Sheets compatible format, and PDF. CSV is an optional backup.
+    *   Exports must be well-structured and formatted for readability.
+    *   Include filters for Date, Route, Driver, Product, and Customer.
+    *   If Excel export fails, the system should offer a Google Sheets link as a fallback.
+2.  **Cash Shortage Tracking:**
+    *   Capture Invoice Amount, Cash Received, and automatically calculate Shortage Amount ().
+    *   Reports must show shortages per transaction and in route summary reports (Total Expected, Total Collected, Total Shortages).
+3.  **Automatic Invoice/Transaction Number:**
+    *   Generate a unique, automatic transaction ID for each sale (e.g., ).
+    *   This ID must appear on the sales screen, receipts, and all reports/exports.
+4.  **UI Fix (Sales Screen):**
+    *   The quantity number displayed between the  and  buttons on the sales entry screen is too large for its container.
+    *   Fix the UI so the number fits clearly and remains centered and readable on all screen sizes.
+5.  **Full Stock Management Module:**
+    *   **Stock Receiving:** Record incoming stock with details like date, product, quantity, and supplier.
+    *   **Stock Take:** Allow manual stock counts and record variance.
+    *   **Stock Adjustment:** A feature to adjust stock for damages, spoilage, theft, etc., with reasons and accountability.
+    *   **Automatic Weekly Stock Report:** Automatically generate and email a detailed stock report (Opening, Received, Sold, Adjustments, Closing) every Friday at 11:00 AM.
+6.  **Email Report Management:**
+    *   An admin feature to manage a list of email recipients for various automated reports.
+    *   Admins should be able to add/remove recipients and assign specific reports to them (e.g., sales reports to , stock reports to ).
 
 **User's preferred language**: English
 
 **what currently exists?**
-A functional MVP of the cross-platform mobile app has been developed. Key features include:
-- A secure login system with JWT-based authentication.
-- Role-based access control distinguishing between , , , and  roles.
-- **For Drivers:** A dashboard showing a daily summary, a list of available routes to start, a reports screen, and a profile screen.
-- **For Admins/Managers:** A comprehensive Admin Dashboard accessible from the profile screen, allowing full CRUD (Create, Read, Update, Delete) operations on Users, Routes, and Customers.
-- A Manage Products screen where authorized users can add, view, edit (price, name, etc.), and delete products.
-- The app has been branded with the user's custom logo on the login and splash screens.
-- The backend API is built with FastAPI and connects to a MongoDB database, with endpoints for all implemented features, including seeding demo data.
+A comprehensive mobile app with role-based access for Admins, Drivers, and other roles. Key existing features include:
+- User authentication (JWT) and management.
+- Route and Customer management (Admin).
+- A full Vehicle Management module, allowing vehicles to be assigned to daily routes.
+- A driver-facing UI to start, continue, and end routes.
+- A sales recording screen for drivers to log product sales per customer, including tracking of crates (dropped/collected).
+- A reports screen with an enhanced Excel export feature.
+- An admin dashboard for managing users, vehicles, routes, and products.
+- Timestamps are automatically added to most transactions.
+- Customer-specific pricing is implemented.
 
 **Last working item**:
-    - Last item agent was working: The agent was implementing a major new feature requested by the user: **Vehicle Management**. This involves creating a  model, adding backend CRUD APIs for vehicles, and associating a selected vehicle with a  when a driver starts their day. This work was initiated in response to the user's request to support multiple concurrent routes with different drivers and vehicles. The agent had just started refactoring the backend by creating a  file to separate Pydantic models from  and was in the process of updating  to include the new vehicle logic.
+    - Last item agent was working: The agent was starting the implementation of a large set of new features requested by the user (PRD above). The work began on the backend  file. The agent attempted to install the  library for PDF generation, which failed. It then proceeded to add new Pydantic models for Stock Management and update the  model for cash shortage tracking and invoice numbers. The process was interrupted mid-file-edit.
     - Status: IN PROGRESS
     - Agent Testing Done: N
     - Which testing method agent to use? backend testing agent
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  Issue 1:  (P0) The backend is likely in a broken state due to the mid-flight refactoring for Vehicle Management. The  file was being modified when the session ended.
+  Issue 1: (P0) Backend is broken due to incomplete feature implementation.
+  Issue 2: (P1) UI bug on the sales screen.
+  Issue 3: (P2) Recurring web preview issue.
 
   Issues Detail:
-  - Issue 1: Backend Refactoring Incomplete
-     - Attempted fixes: The agent started separating Pydantic models into a new  file and modifying  to import from it and add vehicle logic. This process was not completed.
+  - Issue 1: Backend Broken Mid-Update
+     - Attempted fixes: The agent started editing  to add new models and logic for the requested features but was interrupted. The Looking in indexes: https://pypi.org/simple, https://d33sy5i8bnduwe.cloudfront.net/simple/
+Requirement already satisfied: reportlab in /root/.venv/lib/python3.11/site-packages (4.4.10)
+Requirement already satisfied: pillow>=9.0.0 in /root/.venv/lib/python3.11/site-packages (from reportlab) (12.1.1)
+Requirement already satisfied: charset-normalizer in /root/.venv/lib/python3.11/site-packages (from reportlab) (3.4.4) command also failed.
      - Next debug checklist:
-        1. Review  and .
-        2. Ensure all model imports in  are corrected to point to .
-        3. Resolve any syntax errors or incomplete code blocks related to the new Vehicle model and endpoints.
-        4. Restart the backend service and check its health ( endpoint).
-        5. Run the backend testing agent to ensure no existing functionality has regressed.
-     - Why fix this issue and what will be achieved with the fix? This is a prerequisite to completing the Vehicle Management feature. Fixing it will stabilize the backend and allow for the addition of the new endpoints and logic.
-     - Status:  IN PROGRESS
+        1. Verify Looking in indexes: https://pypi.org/simple, https://d33sy5i8bnduwe.cloudfront.net/simple/
+Requirement already satisfied: reportlab in /root/.venv/lib/python3.11/site-packages (4.4.10)
+Requirement already satisfied: pillow>=9.0.0 in /root/.venv/lib/python3.11/site-packages (from reportlab) (12.1.1)
+Requirement already satisfied: charset-normalizer in /root/.venv/lib/python3.11/site-packages (from reportlab) (3.4.4) is successful. If it fails, troubleshoot the installation.
+        2. Review  to identify the incomplete code blocks where the agent left off (it was updating the  model).
+        3. Complete the definition of all new backend models (Stock, Adjustments, Shortages, etc.).
+        4. Implement the new API endpoints related to these models.
+        5. Restart the backend service and ensure it's healthy.
+     - Why fix this issue and what will be achieved with the fix? This is the first and most critical step to implementing the user's extensive list of new features. A stable backend is required before any frontend work can begin.
+     - Status: IN PROGRESS
      - Is recurring issue? N
      - Should Test frontend/backend/both after fix? backend
      - Blocked on other issue: None
 
+  - Issue 2: Sales Screen UI Bug
+     - Attempted fixes: None. This is a newly reported issue.
+     - Next debug checklist:
+        1. Locate the file for the sales screen ().
+        2. Examine the JSX and  for the component that displays the quantity between the  and  buttons.
+        3. Adjust the styling (e.g., , , , or using ) to ensure the number does not overflow its container.
+        4. Test with single, double, and triple-digit numbers to ensure it scales correctly.
+     - Why fix this issue and what will be achieved with the fix? This is a direct UI fix requested by the user to improve usability and readability for drivers.
+     - Status: NOT STARTED
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? frontend
+     - Blocked on other issue: None
+
+  - Issue 3: Blank App Preview
+     - Attempted fixes: The agent has encountered this multiple times and has tried restarting expo, clearing caches, checking for syntax errors, and using the . The issue appears intermittent and might be related to the  tunnel or Expo's web bundler.
+     - Next debug checklist:
+        1. When the user reports this, first verify with the .
+        2. If the screenshot shows the app, instruct the user to do a hard refresh (Ctrl+F5) or use an incognito window.
+        3. If the screenshot is blank, restart 
+  Usage: expo [command] [options]
+
+  Options:
+  
+    -V, --version                     output the version number
+    --non-interactive                 Fail, if an interactive prompt would be required to continue.
+    -h, --help                        output usage information
+  
+  Commands:
+
+    init [name]                       Create a new Expo project
+    start [path]                      Start a local dev server for the app
+    start:web [path]                  Start a Webpack dev server for the web app
+    export [path]                     Export the static files of the app for hosting it on a web server
+    install [packages...]             Install a module or other package to a project
+    run:android [path]                Run the Android app binary locally
+    run:ios [path]                    Run the iOS app binary locally
+    send [path]                       Share the project's URL to an email address
+
+    login                             Login to an Expo account
+    logout                            Logout of an Expo account
+    register                          Sign up for a new Expo account
+    whoami                            Return the currently authenticated account
+
+    client:install:ios                Install Expo Go for iOS on the simulator
+    client:install:android            Install Expo Go for Android on a connected device or emulator
+
+    config [path]                     Show the project config
+    doctor [path]                     Diagnose issues with the project
+    upgrade [sdk-version]             Upgrade the project packages and config for the given SDK version
+
+    customize:web [path]              Eject the default web files for customization
+    prebuild [path]                   Create native iOS and Android project files before building natively.
+                                      Learn more: https://docs.expo.dev/workflow/customizing/
+
+    build:web [path]                  Build the web app for production
+
+    credentials:manager [path]        Superseded by eas credentials in eas-cli
+
+    url [path]                        Log a URL for opening the project in Expo Go
+    url:ipa [path]                    Log the download URL for the standalone iOS binary
+    url:apk [path]                    Log the download URL for the standalone Android binary
+
+    webhooks [path]                   List all webhooks for a project
+    webhooks:add [path]               Add a webhook to a project
+    webhooks:remove [path]            Delete a webhook
+    webhooks:update [path]            Update an existing webhook
+
+    build:ios [path]                  Superseded by eas build in eas-cli
+    build:android [path]              Superseded by eas build in eas-cli
+    build:status [path]               Superseded by eas build:list in eas-cli
+    eject [path]                      Superseded by expo prebuild
+    fetch:ios:certs [path]            Superseded by eas credentials in eas-cli
+    fetch:android:keystore [path]     Superseded by eas credentials in eas-cli
+    fetch:android:hashes [path]       Superseded by eas credentials in eas-cli
+    fetch:android:upload-cert [path]  Superseded by eas credentials in eas-cli
+    publish [path]                    Superseded by eas update in eas-cli
+    publish:set [path]                Superseded by eas update:republish in eas-cli
+    publish:rollback [path]           Superseded by eas update:republish in eas-cli
+    publish:history [path]            Superseded by eas update:list in eas-cli
+    publish:details [path]            Superseded by eas update:view in eas-cli
+    push:android:upload [path]        Superseded by eas credentials in eas-cli
+    push:android:show [path]          Superseded by eas credentials in eas-cli
+    push:android:clear [path]         Superseded by eas credentials in eas-cli
+    upload:android [path]             Superseded by eas submit in eas-cli
+    upload:ios [path]                 Superseded by eas submit in eas-cli
+    client:ios [path]                 Superseded by Expo Dev Clients
+
+[14:05:06]   Run a command with --help for more info 💡
+[14:05:06]     $ expo start --help
+[14:05:06] using expo: ERROR (not running)
+expo: started.
+        4. Check 
+  Usage: expo [command] [options]
+
+  Options:
+  
+    -V, --version                     output the version number
+    --non-interactive                 Fail, if an interactive prompt would be required to continue.
+    -h, --help                        output usage information
+  
+  Commands:
+
+    init [name]                       Create a new Expo project
+    start [path]                      Start a local dev server for the app
+    start:web [path]                  Start a Webpack dev server for the web app
+    export [path]                     Export the static files of the app for hosting it on a web server
+    install [packages...]             Install a module or other package to a project
+    run:android [path]                Run the Android app binary locally
+    run:ios [path]                    Run the iOS app binary locally
+    send [path]                       Share the project's URL to an email address
+
+    login                             Login to an Expo account
+    logout                            Logout of an Expo account
+    register                          Sign up for a new Expo account
+    whoami                            Return the currently authenticated account
+
+    client:install:ios                Install Expo Go for iOS on the simulator
+    client:install:android            Install Expo Go for Android on a connected device or emulator
+
+    config [path]                     Show the project config
+    doctor [path]                     Diagnose issues with the project
+    upgrade [sdk-version]             Upgrade the project packages and config for the given SDK version
+
+    customize:web [path]              Eject the default web files for customization
+    prebuild [path]                   Create native iOS and Android project files before building natively.
+                                      Learn more: https://docs.expo.dev/workflow/customizing/
+
+    build:web [path]                  Build the web app for production
+
+    credentials:manager [path]        Superseded by eas credentials in eas-cli
+
+    url [path]                        Log a URL for opening the project in Expo Go
+    url:ipa [path]                    Log the download URL for the standalone iOS binary
+    url:apk [path]                    Log the download URL for the standalone Android binary
+
+    webhooks [path]                   List all webhooks for a project
+    webhooks:add [path]               Add a webhook to a project
+    webhooks:remove [path]            Delete a webhook
+    webhooks:update [path]            Update an existing webhook
+
+    build:ios [path]                  Superseded by eas build in eas-cli
+    build:android [path]              Superseded by eas build in eas-cli
+    build:status [path]               Superseded by eas build:list in eas-cli
+    eject [path]                      Superseded by expo prebuild
+    fetch:ios:certs [path]            Superseded by eas credentials in eas-cli
+    fetch:android:keystore [path]     Superseded by eas credentials in eas-cli
+    fetch:android:hashes [path]       Superseded by eas credentials in eas-cli
+    fetch:android:upload-cert [path]  Superseded by eas credentials in eas-cli
+    publish [path]                    Superseded by eas update in eas-cli
+    publish:set [path]                Superseded by eas update:republish in eas-cli
+    publish:rollback [path]           Superseded by eas update:republish in eas-cli
+    publish:history [path]            Superseded by eas update:list in eas-cli
+    publish:details [path]            Superseded by eas update:view in eas-cli
+    push:android:upload [path]        Superseded by eas credentials in eas-cli
+    push:android:show [path]          Superseded by eas credentials in eas-cli
+    push:android:clear [path]         Superseded by eas credentials in eas-cli
+    upload:android [path]             Superseded by eas submit in eas-cli
+    upload:ios [path]                 Superseded by eas submit in eas-cli
+    client:ios [path]                 Superseded by Expo Dev Clients
+
+[14:05:07]   Run a command with --help for more info 💡
+[14:05:07]     $ expo start --help
+[14:05:07] logs for bundling errors.
+        5. Guide the user towards testing with the **Expo Go app** as a more reliable alternative to the web preview.
+     - Why fix this issue and what will be achieved with the fix? This is a major source of user frustration and wastes time. A reliable preview/testing method is crucial for development.
+     - Status: NOT STARTED
+     - Is recurring issue? Y
+     - Should Test frontend/backend/both after fix? frontend
+     - Blocked on other issue: None
+
 **In progress Task List**:
-  Task 1:  (P0) Complete the Vehicle Management feature.
+  Task 1: (P0) Implement comprehensive new features from user request.
 
  Task Detail:
-  - Task 1: Implement Vehicle Management
+  - Task 1: Complete New Feature Implementation
      - Where to resume: 
-        1. **Backend:** Finalize the backend changes in  and . Implement the full CRUD API endpoints for vehicles (). Update the Start Route logic () to require a .
-        2. **Frontend:** Create a new Vehicle Management screen within the Admin Dashboard for admins to manage vehicles. Modify the Start Route screen () for drivers to include a vehicle selection dropdown before they can start a route.
-     - What will be achieved with this? The app will support the management of a fleet of vehicles and associate specific vehicles with daily routes, fulfilling a critical business requirement.
-     - Status:  IN PROGRESS
+        1. **Backend:** Resume editing . The agent was just after adding  to the  model. The immediate next step is to continue defining the required Pydantic models for Stock Management, Cash Shortages, and Email Recipients, and then implement all the associated API endpoints.
+        2. **Frontend:** Once the backend is complete and tested, update the frontend to support all the new features (UI for shortage tracking, stock management screens, report filters, etc.).
+     - What will be achieved with this? This will deliver the full set of operational tools requested by the user, making the app a complete solution for their business.
+     - Status: IN PROGRESS
      - Should Test frontend/backend/both after fix? both
-     - Blocked on something: Issue 1 (Backend Refactoring Incomplete)
+     - Blocked on something: Issue 1 (Backend Broken Mid-Update).
 
 **Upcoming and Future Tasks**
     Upcoming Tasks:
-    - **(P1) Concurrent Route Management:** After vehicle management is done, update the Driver's home screen () to display a list of all currently active routes, not just a summary. This was started but paused.
-    - **(P2) Conductor Role Functionality:** Implement the specific UI and logic for the 'Conductor' role, which is currently a placeholder. This includes viewing route sales and assisting with recording deliveries.
-    - **(P3) Detailed Customer Sales Recording:** Implement the UI for drivers to record sales for each customer on a route. This includes selecting products, entering quantities (delivered, returned, damaged), and recording payments.
+    - **(P0) Reporting Export Fix:** Implement PDF and Google Sheets export options, and add filters (Date, Route, Driver, etc.) to the export functionality. (Part of the in-progress task).
+    - **(P0) Cash Shortage Tracking:** Add UI fields on the sales screen and logic in the backend to track short payments. (Part of the in-progress task).
+    - **(P0) Automatic Invoice Number:** Implement the backend logic to generate unique invoice numbers and display them on the frontend. (Part of the in-progress task).
+    - **(P1) Stock Management Module:** Create the full UI/UX for Stock Receiving, Stock Take, and Stock Adjustments within the Admin section. (Part of the in-progress task).
+    - **(P2) Email Report Management:** Create a UI in the Admin settings for managing email recipients for automated reports. (Part of the in-progress task).
 
     Future Tasks:
-    - **(P4) Offline Mode:** Implement functionality to allow the app to work without an internet connection and sync data later.
-    - **(P5) Vehicle & Route Tracking:** Implement the vehicle inspection checklist and enhance tracking of kilometers.
-    - **(P6) GPS Tracking:** Add optional GPS tracking for route confirmation.
-    - **(P7) Advanced Reporting:** Build out more detailed reports as specified in the initial problem statement (e.g., customer purchase history, product movement reports).
-    - **(P8) Barcode/QR Scanner:** Integrate a scanner for product verification and stock updates.
+    - There are no other future tasks mentioned beyond the comprehensive list currently being implemented.
 
 **Completed work in this session**
-- **User Authentication & RBAC:**
-  - Implemented secure login with JWT.
-  - Established roles: Admin, Manager, Driver, Conductor.
-- **Admin Dashboard:**
-  - Created a full management dashboard for Admins/Managers at .
-  - Implemented CRUD functionality for Users, Routes, and Customers.
-- **Product Management:**
-  - Created a Manage Products screen ().
-  - Implemented features to add, edit (name, price, category, unit), and delete products.
-- **Driver-Facing MVP:**
-  - Built the main tab navigation (Home, Route, Reports, Profile).
-  - Home dashboard with daily stats.
-  - Route selection screen.
-  - Basic reports and profile screens.
-- **Branding:**
-  - Integrated the user-provided logo into the login and splash screens.
+- **Feature: Vehicle Management:** Implemented full CRUD for vehicles, linked them to daily routes, and displayed vehicle info on the driver's home screen.
+- **Feature: Concurrent & Continue Route Flow:** Fixed the Continue Route functionality, allowing drivers to resume specific routes. Added an End Route button.
+- **Feature: Crates Tracking:** Implemented tracking for crates dropped off and collected during a sale.
+- **Feature: Customer-Specific Pricing:** The app now fetches and uses special prices for specific customers during sales entry.
+- **Feature: Enhanced Excel Export:** Replaced the basic CSV export with a formatted, multi-sheet Excel report using .
+- **Bugfix: Login Navigation:** Resolved a persistent issue where the login button did not navigate on the web preview by replacing  with .
+- **Bugfix: Route Customer Loading:** Fixed a bug where customers would not appear on the route tab.
+- **Deployment Prep:** Removed hardcoded secrets and database names from the code, replacing them with environment variables to pass deployment checks.
 
 **Earlier issues found/mentioned but not fixed**
-   - None. The agent successfully debugged and fixed the major login issue.
+   - The primary unfixed issue is the root cause of the **recurring blank app preview** (Issue 3 in the list above). While the agent found workarounds, the underlying instability persists and is a significant source of user friction.
 
 **Known issue recurrence from previous fork**
-  - None
+  - None noted from the previous summary.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
 - **Frontend:** React Native, Expo, Expo Router, TypeScript
-- **UI:** Custom components using  elements,  for interactions.
-- **State Management:** React Context API () for authentication state.
 - **Backend:** Python, FastAPI
 - **Database:** MongoDB
-- **Authentication:** JWT (JSON Web Tokens) with role-based access control (RBAC).
+- **Authentication:** JWT (JSON Web Tokens) with role-based access control.
+- **Reporting:**  for Excel.  is planned for PDF generation.
 
 **key DB schema**
-  - **users:** {username, hashed_password, full_name, role, phone_number, is_active}
-  - **products:** {name, category, unit_type, price}
-  - **customers:** {name, location, payment_terms, credit_limit}
-  - **routes:** {name, description, customer_ids}
-  - **daily_routes:** {driver_id, route_id, start_time, end_time, status, opening_km, closing_km}
-  - **vehicles:** (To be implemented) {name, registration_number, type, is_active}
+  - **users:** {username, hashed_password, role, ...}
+  - **products:** {name, category, price, ...}
+  - **customers:** {name, location, ...}, to be updated with **customer_specific_prices**: [{product_id, price}]
+  - **routes:** {name, description, ...}
+  - **daily_routes:** {driver_id, route_id, vehicle_id, status, ...}
+  - **vehicles:** {name, registration_number, ...}
+  - **sales:** to be updated with {invoice_number, cash_received, shortage_amount}
+  - **(New) stock_items:** {product_id, quantity}
+  - **(New) stock_log:** {product_id, quantity, type, reason, user_id, timestamp}
+  - **(New) email_recipients:** {email, report_type}
 
 **changes in tech stack**
-  - None.
+  - ****: Attempted to be added for PDF generation.
+  - ****: Added for advanced Excel report generation.
 
 **All files of reference**
-- **:** The main FastAPI application file. It was being refactored to support vehicle management.
-- **:** A new file created to hold all Pydantic models, separating them from the main server logic.
-- **:** The new screen for the Admin Dashboard, containing complex state and UI for managing users, routes, and customers.
-- **:** The screen for adding, editing, and deleting products.
-- **:** Updated to use the new company logo and  component for better web compatibility.
-- **:** Updated to store and provide the logged-in user's role.
-- **:** Significantly expanded to include methods for all the new admin and product management APIs.
+- ****: The main backend application. It is currently broken mid-update while adding a large number of new features.
+- ****: The sales entry screen. Needs a UI fix for the quantity display and will require significant updates for cash shortage tracking.
+- ****: The reports screen. The Excel export logic is in the backend, but this screen will need UI for new export options (PDF) and filtering.
+- ****: The admin dashboard. Will need new tabs/sections for Stock Management and Email Recipient Management.
+- ****: The frontend API service. Will need to be updated with methods for all the new backend endpoints.
 
 **Areas that need refactoring**:
-- The  file is still large. Continuing to separate concerns (e.g., routers for different API sections) would be beneficial in the long run.
+-  is becoming excessively large. The new features (Stock Management, Reporting) should ideally be broken out into their own FastAPI  files to improve maintainability.
 
 **key api endpoints**
-- : User login.
-- : CRUD for users (Admin only).
-- : CRUD for routes (Admin only).
-- : CRUD for customers (Admin only).
-- : GET all products.
-- : POST new product.
-- : PUT/DELETE a product.
-- : POST to start a new route.
+- : (PUT) Generates an Excel report. To be updated for PDF/other formats and filtering.
+- **(New/Planned)** : To record incoming stock.
+- **(New/Planned)** : To make stock adjustments.
+- **(New/Planned)** : To perform a stock take.
+- **(New/Planned)** : CRUD for managing report recipients.
+- **(New/Planned)** : (POST) To be updated to handle shortage calculation and invoice number generation.
 
 **Critical Info for New Agent**
-- **Role-Based Access is Central:** Much of the recent work has been to implement strict permissions. The  from  is used on the frontend to conditionally render UI. The backend protects endpoints using a dependency that checks user roles.
-- **Vehicle Management is the Top Priority:** The last user request was to add vehicle management and link vehicles to routes. Your immediate task is to fix the backend refactoring and then complete this feature.
-- **Component Choice:** The agent discovered that  with  is more reliable on web previews than  for actions. Continue this pattern for interactive elements.
+- **Top Priority:** The user has provided a large, detailed list of requirements in their last message (Chat Message 583). Your immediate goal is to fix the broken backend and then systematically implement every item on that list.
+- **Backend is Broken:** You must start by fixing . The  installation failed, and the file was being edited.
+- **Guide User to Expo Go:** The user has repeatedly had issues with the web preview being blank. Proactively guide them to use the **Expo Go app** for testing, explaining that it provides the most reliable and up-to-date view of the application on a real device.
+- **Incremental Confirmation:** Given the large scope of work, implement one feature at a time (e.g., 1. Backend for shortages, 2. Frontend for shortages, 3. Test, 4. Confirm with user) before moving to the next. This will provide better feedback loops.
 
 **documents created in this job**
-  - None.
+-  was updated several times.
 
-**Last 10 User Messages and any pending HUMAN messages**
-- **User (Msg 226):** Requested support for multiple concurrent routes with different drivers, different vehicles, and unique login details. (PENDING - Work In Progress)
-- **Agent (Msg 227-232):** Acknowledged the request and started implementing Vehicle Management, including backend model and API changes.
-- **User (Msg 215):** Asked if multiple routes could run concurrently. (PENDING - Superseded by Msg 226 but related)
-- **Agent (Msg 216-225):** Analyzed the system, confirmed it was not supported, and began implementing a solution before being interrupted by the new request.
-- **User (Msg 194):** Provided the app logo. (COMPLETED)
-- **Agent (Msg 195-214):** Integrated the logo into the login and splash screens.
-- **User (Msg 153):** Re-emphasized the need for role-based permissions and editing capabilities for on-route scenarios. (COMPLETED)
-- **Agent (Msg 154-193):** Implemented a comprehensive Admin Dashboard with full CRUD for users, routes, and customers, protected by role-based access. Verified that drivers do not see admin options.
-- **User (Msg 150):** Asked the agent to consider business scenarios and implement edit/update capabilities with role-based authority. (COMPLETED)
-- **User (Msg 129):** Confirmed they want to edit products on the management side. (COMPLETED)
+**Last 10 User Messages and any pending HUMAN messages** 
+ - **Msg 583 (LATEST):** Provided a very detailed list of 7 major requirements including reporting fixes, cash shortage tracking, automatic invoice numbers, a UI bug fix, a full stock management module, and email recipient management. (PENDING - Work just started)
+ - **Msg 576:** Asked the agent to call the Deployer Agent and run a health check. (COMPLETED)
+ - **Msg 553:** Requested that the Excel reports be made more attractive, interactive, and have a good layout. (COMPLETED - Agent implemented an enhanced export)
+ - **Msg 547:** Asked the agent to test via the Expo Go app. (COMPLETED - Agent provided instructions)
+ - **Msg 539:** Reported that the downloaded APK is not the same as the working app preview. (ADDRESSED - Agent explained the difference between static builds and live previews)
+ - **Msg 508:** Reported that nothing is reflecting on the app preview. (ADDRESSED - Agent troubleshooted and confirmed the app was working)
+ - **Msg 429:** Provided a list of features: fix continue route, admin-only route deletion, driver end-route, automatic timestamps, email reports, and customer-specific pricing. (COMPLETED)
+ - **Msg 414:** continue where you left off (COMPLETED)
+ - **Msg 379:** Asked the agent to call the Deployer Agent and run a health check. (COMPLETED - but led to a new set of fixes)
+ - **Msg 340:** Asked the agent to thoroughly check if the app is fully functional. (COMPLETED - Agent performed a full-stack test)
 
 **Project Health Check:**
-- **Broken:** The backend is currently in a broken state due to an incomplete refactoring task.
-- **Mocked:** No data is mocked; a  endpoint is used to populate the database with realistic demo data.
+- **Broken:** The backend is non-functional due to an incomplete feature implementation in  and a failed package installation ().
+- **Mocked:** No mocked data. A  endpoint is used to populate the database.
 
 **3rd Party Integrations**
-- None currently, but the tech stack suggests libraries like  or  might be added later for GPS features.
+- : For creating formatted Excel reports.
+-  (pending installation): For creating PDF reports.
 
 **Testing status**
-  - Testing agent used after significant changes: YES. The  agent was used to verify the API after the initial MVP was built. It has not been run since the recent changes.
-  - Troubleshoot agent used after agent stuck in loop: NO
+  - Testing agent used after significant changes: YES. Both  and  were used extensively throughout the session.
+  - Troubleshoot agent used after agent stuck in loop: YES. It was used to diagnose the blank screen issue.
   - Test files created: []
-  - Known regressions: None identified, but the backend is currently unstable.
+  - Known regressions: None currently known, but the backend is broken.
 
 **Credentials to test flow:**
 After seeding the database ():
-- **Admin:**  / 
-- **Driver:**  / 
+- **Admin:**  / PIN 
+- **Driver:**  / PIN 
+
+**What agent forgot to execute**
+The agent did not forget to execute anything; it was in the middle of executing a very large user request when the session ended. All pending items are captured in the Upcoming Tasks and In progress Task List sections.
 
 </analysis>
-<SYS_PROMPT_SEPARATOR>
-<workspace_dir>
-/app
-</workspace_dir>
-
-I have analyzed the entire conversation and provided a detailed handover summary. The next agent should focus on fixing the backend and then implementing the vehicle management feature as the highest priority.

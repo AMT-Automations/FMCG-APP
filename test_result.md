@@ -102,7 +102,7 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Build Mzansi Distribution Tracker - a route sales mobile app for FMCG distribution. Features: driver login with PIN, route management, customer sales recording, vehicle tracking, daily summaries."
+user_problem_statement: "Build Mzansi Distribution Tracker - a route sales mobile app for FMCG distribution. Features: driver login with PIN, route management, customer sales recording, vehicle tracking, daily summaries. NEW REQUIREMENTS: 1) Cash shortage tracking (Invoice Amount - Cash Received), 2) Automatic invoice number generation (INV-YYYYMMDD-ROUTE-####), 3) UI fix for quantity display on sales screen, 4) PDF/Excel/Google Sheets export with filters, 5) Full stock management module, 6) Email report management with SMTP integration."
 
 backend:
   - task: "User Authentication (Register/Login with PIN)"
@@ -231,6 +231,42 @@ backend:
         agent: "testing"
         comment: "✅ COMPREHENSIVE BACKEND API TESTING COMPLETE (35 endpoints tested) - All Mzansi Distribution Tracker backend APIs extensively tested and verified working correctly. TESTED ENDPOINTS: 1) Authentication (POST /auth/login, POST /auth/register, GET /auth/me) - all working perfectly, 2) Users Management (GET /users, POST /users, PUT /users/{id}, DELETE /users/{id}) - admin-only CRUD with proper role restrictions (403 for drivers), 3) Vehicles Management (GET /vehicles, GET /vehicles/available, POST /vehicles, PUT /vehicles/{id}, DELETE /vehicles/{id}) - CRUD operations and availability tracking working perfectly, 4) Routes Management (GET /routes, POST /routes, PUT /routes/{id}, GET /routes/{id}/customers) - fully functional, 5) Customers Management (GET /customers, POST /customers, PUT /customers/{id}) - working correctly, 6) Products Management (GET /products, POST /products, PUT /products/{id}, DELETE /products/{id}) - proper validation (422 for invalid data), 7) Daily Routes (POST /daily-routes/start, GET /daily-routes/active, GET /daily-routes/active/all, PUT /daily-routes/{id}/end, GET /daily-routes/history) - vehicle tracking working, vehicle in-use prevention working (400 error), 8) Sales Recording (POST /sales, GET /sales, GET /sales/{id}, PUT /sales/{id}, POST /sales/{id}/void) - complete sales flow working with calculations, 9) Reports (GET /reports/daily-summary, GET /reports/route-performance/{id}, GET /reports/export/excel) - all generating correctly, 10) Permissions (GET /permissions) - role-based permissions working properly, 11) Data seeding (POST /seed-all) - working. Backend is production-ready with no critical issues. Role-based access control, data validation, and business logic all functioning correctly."
 
+  - task: "NEW FEATURE: Automatic Invoice Number Generation"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ AUTOMATIC INVOICE NUMBER GENERATION WORKING PERFECTLY - Tested invoice format INV-YYYYMMDD-ROUTE-#### with correct implementation. Verified: 1) Format structure: INV-20260310-SOWE-0001, INV-20260310-SOWE-0002, INV-20260310-SOWE-0003, 2) Route code extraction from route name (Soweto North -> SOWE), 3) Daily sequence numbering starting from 0001 and incrementing properly, 4) Date format YYYYMMDD correctly embedded, 5) 4-digit sequence with leading zeros. All sales now automatically receive unique invoice numbers following the exact specification."
+
+  - task: "NEW FEATURE: Cash Shortage Tracking"  
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ CASH SHORTAGE TRACKING WORKING PERFECTLY - Tested shortage calculation formula: shortage_amount = total_amount - cash_collected. Verified: 1) Shortage calculation accuracy (R180 invoice - R150 cash = R30 shortage, R160 invoice - R140 cash = R20 shortage), 2) SaleResponse model includes shortage_amount field, 3) DailyRouteResponse model includes total_expected, total_shortage fields, 4) Daily route accumulates individual sale shortages correctly. Shortage tracking providing accurate financial visibility."
+
+  - task: "NEW FEATURE: Daily Route Total Accumulation"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py" 
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ DAILY ROUTE ACCUMULATION WORKING PERFECTLY - Tested route total updates with each sale. Verified: 1) total_expected accumulates invoice amounts (R180 + R180 + R160 = R520), 2) total_collected accumulates cash received (R150 + R150 + R140 = R440), 3) total_shortage accumulates shortages (R30 + R30 + R20 = R80), 4) sales_count increments properly (3 sales), 5) All calculations match individual sale totals exactly. Daily route provides comprehensive financial summary with real-time updates."
+
 frontend:
   - task: "Login Screen with PIN"
     implemented: true
@@ -342,8 +378,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Frontend integration testing - COMPLETED"
-    - "End-to-end workflow validation - COMPLETED"
+    - "NEW FEATURES TESTING COMPLETED"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -361,3 +396,7 @@ agent_communication:
     message: "✅ COMPREHENSIVE FRONTEND MOBILE TESTING COMPLETE - All frontend features tested successfully on mobile viewport (390x844). RESULTS: 1) Login system working perfectly (demo data loading, driver auth 0812345678/1234, admin auth 0800000001/0000), 2) Home dashboard fully functional showing greeting, user info, active routes (4), route details, navigation, 3) NEW FEATURE CONFIRMED: Vehicle Selection in Start Route screen - shows available vehicles, in-use status, vehicle capacity, fully integrated, 4) NEW FEATURE CONFIRMED: Admin Dashboard Vehicles tab - complete vehicle management (CRUD), mobile responsive interface, 5) All navigation tabs working (Home, Route, Reports, Profile), 6) Mobile responsiveness excellent, professional UI design. Both new vehicle management features working perfectly. Frontend ready for production."
   - agent: "testing"
     message: "✅ COMPREHENSIVE BACKEND API TESTING COMPLETE (35 endpoints tested) - All Mzansi Distribution Tracker backend APIs extensively tested and verified working correctly. TESTED ENDPOINTS: 1) Authentication (login, register, /auth/me) - all working, 2) Users Management (admin-only CRUD) - proper role restrictions (403 for drivers), 3) Vehicles Management (CRUD + availability tracking) - working perfectly, 4) Routes Management (CRUD + customer listing) - fully functional, 5) Customers Management (CRUD) - working correctly, 6) Products Management (CRUD + validation) - proper validation (422 for invalid data), 7) Daily Routes (start/end/active/history) - vehicle tracking working, vehicle in-use prevention working (400 error), 8) Sales Recording (CRUD + void) - complete sales flow working with calculations, 9) Reports (daily summary, route performance, Excel export) - all generating correctly, 10) Permissions (role-based) - working properly, 11) Data seeding - working. Backend is production-ready with no critical issues. Role-based access control, data validation, and business logic all functioning correctly."
+  - agent: "main"
+    message: "NEW FEATURES IMPLEMENTED: 1) AUTOMATIC INVOICE NUMBER - Sales now generate unique invoice numbers (INV-YYYYMMDD-ROUTE-####), tested via curl showing INV-20260310-SOWE-0001. 2) CASH SHORTAGE TRACKING - Backend calculates shortage_amount = total_amount - cash_collected, daily route totals now include total_expected and total_shortage fields. 3) UI FIX - Sales screen quantity input box sizing reduced to prevent overflow. 4) EMAIL SSL SUPPORT - Updated SMTP to support both SSL (port 465) and TLS (port 587). Frontend shows live shortage calculation and displays invoice number in success alert. All backend changes tested via curl - working correctly."
+  - agent: "testing"
+    message: "✅ NEW FEATURES COMPREHENSIVE TESTING COMPLETE - All 3 NEW features tested and verified working perfectly. TESTED FEATURES: 1) AUTOMATIC INVOICE NUMBER GENERATION - Format INV-YYYYMMDD-ROUTE-#### working correctly (verified INV-20260310-SOWE-0001, INV-20260310-SOWE-0002, INV-20260310-SOWE-0003), sequence increments properly, route code extraction from route name working. 2) CASH SHORTAGE TRACKING - Shortage calculation = total_amount - cash_collected working perfectly (tested R30 shortage from R180 invoice with R150 cash, R20 shortage from R160 invoice with R140 cash). 3) DAILY ROUTE ACCUMULATION - Route totals accumulating correctly (total_expected R520, total_collected R440, total_shortage R80, sales_count 3), all calculations match individual sale totals. Backend NEW features ready for production - 100% success rate. Test data: 3 sales created with proper invoice numbers, shortage tracking, and route total updates."
