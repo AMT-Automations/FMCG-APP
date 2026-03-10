@@ -2383,6 +2383,433 @@ async def seed_stock():
     
     return {"message": f"Seeded stock for {len(products)} products"}
 
+# ==================== PDF EXPORT ====================
+
+@api_router.get("/reports/export/pdf")
+async def export_report_pdf(
+    date_str: Optional[str] = None,
+    route_id: Optional[str] = None,
+    driver_id: Optional[str] = None,
+    customer_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export route report to PDF format with filters"""
+    if not date_str:
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # Build query based on filters
+    query = {"date": date_str}
+    if route_id:
+        query["route_id"] = route_id
+    if driver_id and is_admin_or_manager(current_user):
+        query["driver_id"] = driver_id
+    elif current_user["role"] == "driver":
+        query["driver_id"] = current_user["id"]
+    
+    daily_routes = await db.daily_routes.find(query).to_list(100)
+    
+    # Get sales
+    start = datetime.strptime(date_str, "%Y-%m-%d")
+    end = start.replace(hour=23, minute=59, second=59)
+    
+    sales_query = {"created_at": {"$gte": start, "$lte": end}, "is_voided": {"$ne": True}}
+    if route_id:
+        sales_query["route_id"] = route_id
+    if customer_id:
+        sales_query["customer_id"] = customer_id
+    if driver_id and is_admin_or_manager(current_user):
+        sales_query["driver_id"] = driver_id
+    elif current_user["role"] == "driver":
+        sales_query["driver_id"] = current_user["id"]
+    
+    sales = await db.sales.find(sales_query).to_list(1000)
+    
+    # Create PDF
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=30, bottomMargin=30)
+    styles = getSampleStyleSheet()
+    elements = []
+    
+    # Custom styles
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=24, spaceAfter=20, alignment=1, textColor=colors.HexColor('#3B82F6'))
+    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], fontSize=12, spaceAfter=10, alignment=1, textColor=colors.HexColor('#64748B'))
+    section_style = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=14, spaceBefore=20, spaceAfter=10, textColor=colors.HexColor('#1E293B'))
+    
+    # Header
+    elements.append(Paragraph("Mzansi Distribution Tracker", title_style))
+    elements.append(Paragraph(f"Route Sales Report - {date_str}", subtitle_style))
+    elements.append(Spacer(1, 20))
+    
+    # Summary section
+    total_sales = len(sales)
+    total_collected = sum(s.get('cash_collected', 0) for s in sales)
+    total_expected = sum(s.get('total_amount', 0) for s in sales)
+    total_shortage = sum(s.get('shortage_amount', 0) for s in sales)
+    
+    elements.append(Paragraph("Summary", section_style))
+    summary_data = [
+        ['Total Sales', 'Total Expected', 'Total Collected', 'Total Shortage'],
+        [str(total_sales), f'R {total_expected:.2f}', f'R {total_collected:.2f}', f'R {total_shortage:.2f}']
+    ]
+    summary_table = Table(summary_data, colWidths=[120, 120, 120, 120])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3B82F6')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8FAFC')),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0')),
+        ('FONTSIZE', (0, 1), (-1, -1), 11),
+        ('TOPPADDING', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 20))
+    
+    # Sales Detail section
+    if sales:
+        elements.append(Paragraph("Sales Details", section_style))
+        sales_data = [['Invoice #', 'Customer', 'Driver', 'Amount', 'Received', 'Shortage', 'Time']]
+        for sale in sales[:50]:  # Limit to 50 for PDF readability
+            sales_data.append([
+                sale.get('invoice_number', 'N/A')[:20],
+                sale.get('customer_name', 'N/A')[:15],
+                sale.get('driver_name', 'N/A')[:12],
+                f"R {sale.get('total_amount', 0):.2f}",
+                f"R {sale.get('cash_collected', 0):.2f}",
+                f"R {sale.get('shortage_amount', 0):.2f}",
+                sale.get('created_at', datetime.utcnow()).strftime('%H:%M')
+            ])
+        
+        sales_table = Table(sales_data, colWidths=[85, 75, 70, 65, 65, 60, 45])
+        sales_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#10B981')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 7),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
+        ]))
+        elements.append(sales_table)
+    
+    # Route Summary section
+    if daily_routes:
+        elements.append(Spacer(1, 20))
+        elements.append(Paragraph("Route Summary", section_style))
+        route_data = [['Route', 'Driver', 'Vehicle', 'Status', 'Sales', 'Collected', 'Shortage']]
+        for dr in daily_routes:
+            route_data.append([
+                dr.get('route_name', 'N/A')[:15],
+                dr.get('driver_name', 'N/A')[:12],
+                dr.get('vehicle_name', 'N/A')[:10],
+                dr.get('status', 'N/A'),
+                str(dr.get('sales_count', 0)),
+                f"R {dr.get('total_collected', 0):.2f}",
+                f"R {dr.get('total_shortage', 0):.2f}"
+            ])
+        
+        route_table = Table(route_data, colWidths=[80, 70, 60, 55, 45, 75, 65])
+        route_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F59E0B')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#FEF3C7')]),
+        ]))
+        elements.append(route_table)
+    
+    # Footer
+    elements.append(Spacer(1, 30))
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, alignment=1, textColor=colors.HexColor('#94A3B8'))
+    elements.append(Paragraph(f"Generated on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC", footer_style))
+    elements.append(Paragraph("Mzansi Distribution Tracker - Powered by Emergent", footer_style))
+    
+    doc.build(elements)
+    buffer.seek(0)
+    
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=sales_report_{date_str}.pdf"}
+    )
+
+# ==================== EMAIL RECIPIENTS MANAGEMENT ====================
+
+class EmailRecipient(BaseModel):
+    email: str
+    name: Optional[str] = None
+    report_types: List[str] = []  # e.g., ['sales', 'stock', 'summary']
+    is_active: bool = True
+
+class EmailRecipientCreate(BaseModel):
+    email: str
+    name: Optional[str] = None
+    report_types: List[str] = []
+
+class EmailConfig(BaseModel):
+    sender_email: str
+    sender_password: str
+    smtp_server: str = "mail.mzansipc.co.za"
+    smtp_port: int = 465
+
+@api_router.get("/admin/settings/email")
+async def get_email_settings(current_user: dict = Depends(get_current_user)):
+    """Get email configuration - Admin only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    config = await db.settings.find_one({"type": "email_config"})
+    if not config:
+        return {"configured": False}
+    
+    # Don't expose password
+    return {
+        "configured": True,
+        "sender_email": config.get("sender_email"),
+        "smtp_server": config.get("smtp_server"),
+        "smtp_port": config.get("smtp_port")
+    }
+
+@api_router.post("/admin/settings/email")
+async def save_email_settings(config: EmailConfig, current_user: dict = Depends(get_current_user)):
+    """Save email configuration - Admin only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    await db.settings.update_one(
+        {"type": "email_config"},
+        {"$set": {
+            "type": "email_config",
+            "sender_email": config.sender_email,
+            "sender_password": config.sender_password,
+            "smtp_server": config.smtp_server,
+            "smtp_port": config.smtp_port,
+            "updated_at": datetime.utcnow(),
+            "updated_by": current_user["id"]
+        }},
+        upsert=True
+    )
+    
+    return {"message": "Email configuration saved successfully"}
+
+@api_router.get("/admin/email-recipients")
+async def get_email_recipients(current_user: dict = Depends(get_current_user)):
+    """Get all email recipients - Admin only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    recipients = await db.email_recipients.find().to_list(100)
+    return [str_id(r) for r in recipients]
+
+@api_router.post("/admin/email-recipients")
+async def add_email_recipient(data: EmailRecipientCreate, current_user: dict = Depends(get_current_user)):
+    """Add a new email recipient - Admin only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if email already exists
+    existing = await db.email_recipients.find_one({"email": data.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email recipient already exists")
+    
+    recipient = {
+        "email": data.email,
+        "name": data.name,
+        "report_types": data.report_types,
+        "is_active": True,
+        "created_at": datetime.utcnow(),
+        "created_by": current_user["id"]
+    }
+    
+    result = await db.email_recipients.insert_one(recipient)
+    recipient["_id"] = result.inserted_id
+    
+    return str_id(recipient)
+
+@api_router.put("/admin/email-recipients/{recipient_id}")
+async def update_email_recipient(recipient_id: str, data: EmailRecipientCreate, current_user: dict = Depends(get_current_user)):
+    """Update an email recipient - Admin only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    result = await db.email_recipients.update_one(
+        {"_id": ObjectId(recipient_id)},
+        {"$set": {
+            "email": data.email,
+            "name": data.name,
+            "report_types": data.report_types,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    
+    return {"message": "Recipient updated"}
+
+@api_router.delete("/admin/email-recipients/{recipient_id}")
+async def delete_email_recipient(recipient_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete an email recipient - Admin only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    result = await db.email_recipients.delete_one({"_id": ObjectId(recipient_id)})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    
+    return {"message": "Recipient deleted"}
+
+@api_router.post("/admin/email-recipients/{recipient_id}/toggle")
+async def toggle_email_recipient(recipient_id: str, current_user: dict = Depends(get_current_user)):
+    """Toggle email recipient active status - Admin only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    recipient = await db.email_recipients.find_one({"_id": ObjectId(recipient_id)})
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    
+    new_status = not recipient.get("is_active", True)
+    await db.email_recipients.update_one(
+        {"_id": ObjectId(recipient_id)},
+        {"$set": {"is_active": new_status}}
+    )
+    
+    return {"message": f"Recipient {'activated' if new_status else 'deactivated'}", "is_active": new_status}
+
+# ==================== AUTOMATED REPORTS ====================
+
+@api_router.post("/admin/send-report")
+async def send_report_email(
+    report_type: str,  # 'sales', 'stock', 'summary'
+    date_str: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Send report to configured email recipients - Admin only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    if not date_str:
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # Get email config
+    email_config = await db.settings.find_one({"type": "email_config"})
+    if not email_config:
+        raise HTTPException(status_code=400, detail="Email not configured. Please set up email settings first.")
+    
+    # Get recipients for this report type
+    recipients = await db.email_recipients.find({
+        "is_active": True,
+        "report_types": report_type
+    }).to_list(50)
+    
+    if not recipients:
+        raise HTTPException(status_code=400, detail=f"No active recipients configured for {report_type} reports")
+    
+    # Generate report based on type
+    if report_type == 'stock':
+        # Generate stock report
+        report_data = await get_stock_report(current_user)
+        subject = f"Stock Report - {date_str}"
+        body = f"""
+        <h2>Weekly Stock Report</h2>
+        <p><strong>Report Date:</strong> {date_str}</p>
+        <p><strong>Week Start:</strong> {report_data.get('week_start', 'N/A')}</p>
+        <h3>Summary</h3>
+        <ul>
+            <li>Total Products: {report_data['summary']['total_products']}</li>
+            <li>Total Received: {report_data['summary']['total_received']}</li>
+            <li>Total Sold: {report_data['summary']['total_sold']}</li>
+            <li>Total Adjustments: {report_data['summary']['total_adjustments']}</li>
+        </ul>
+        <h3>Product Details</h3>
+        <table border="1" style="border-collapse: collapse;">
+            <tr style="background-color: #3B82F6; color: white;">
+                <th>Product</th><th>Opening</th><th>Received</th><th>Sold</th><th>Adjustments</th><th>Closing</th>
+            </tr>
+        """
+        for p in report_data.get('products', []):
+            body += f"""
+            <tr>
+                <td>{p['product_name']}</td>
+                <td>{p['opening_stock']}</td>
+                <td>{p['received']}</td>
+                <td>{p['sold']}</td>
+                <td>{p['adjustments']}</td>
+                <td>{p['closing_stock']}</td>
+            </tr>
+            """
+        body += "</table>"
+    else:
+        # Generate sales report
+        start = datetime.strptime(date_str, "%Y-%m-%d")
+        end = start.replace(hour=23, minute=59, second=59)
+        sales = await db.sales.find({
+            "created_at": {"$gte": start, "$lte": end},
+            "is_voided": {"$ne": True}
+        }).to_list(1000)
+        
+        total_expected = sum(s.get('total_amount', 0) for s in sales)
+        total_collected = sum(s.get('cash_collected', 0) for s in sales)
+        total_shortage = sum(s.get('shortage_amount', 0) for s in sales)
+        
+        subject = f"Sales Report - {date_str}"
+        body = f"""
+        <h2>Daily Sales Report</h2>
+        <p><strong>Date:</strong> {date_str}</p>
+        <h3>Summary</h3>
+        <ul>
+            <li><strong>Total Sales:</strong> {len(sales)}</li>
+            <li><strong>Total Expected:</strong> R {total_expected:.2f}</li>
+            <li><strong>Total Collected:</strong> R {total_collected:.2f}</li>
+            <li><strong>Total Shortage:</strong> R {total_shortage:.2f}</li>
+        </ul>
+        """
+    
+    # Send emails
+    sent_count = 0
+    failed = []
+    
+    for recipient in recipients:
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['From'] = email_config.get('sender_email')
+            msg['To'] = recipient['email']
+            msg['Subject'] = subject
+            
+            msg.attach(MIMEText(body, 'html'))
+            
+            smtp_port = email_config.get('smtp_port', 465)
+            smtp_server = email_config.get('smtp_server', 'mail.mzansipc.co.za')
+            
+            if smtp_port == 465:
+                server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+            else:
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                server.starttls()
+            
+            server.login(email_config.get('sender_email'), email_config.get('sender_password'))
+            server.send_message(msg)
+            server.quit()
+            sent_count += 1
+        except Exception as e:
+            failed.append({"email": recipient['email'], "error": str(e)})
+    
+    return {
+        "message": f"Report sent to {sent_count} recipients",
+        "sent": sent_count,
+        "failed": failed
+    }
+
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/health")

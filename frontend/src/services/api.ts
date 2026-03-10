@@ -385,6 +385,48 @@ class ApiService {
     return response.data;
   }
 
+  // PDF Export
+  async exportReportPDF(params: { date_str?: string; route_id?: string; driver_id?: string; customer_id?: string }) {
+    const response = await this.client.get('/reports/export/pdf', { 
+      params,
+      responseType: 'blob' 
+    });
+    return response.data;
+  }
+
+  // Email Recipients Management
+  async getEmailRecipients() {
+    const response = await this.client.get('/admin/email-recipients');
+    return response.data;
+  }
+
+  async addEmailRecipient(data: { email: string; name?: string; report_types: string[] }) {
+    const response = await this.client.post('/admin/email-recipients', data);
+    return response.data;
+  }
+
+  async updateEmailRecipient(recipientId: string, data: { email: string; name?: string; report_types: string[] }) {
+    const response = await this.client.put(`/admin/email-recipients/${recipientId}`, data);
+    return response.data;
+  }
+
+  async deleteEmailRecipient(recipientId: string) {
+    const response = await this.client.delete(`/admin/email-recipients/${recipientId}`);
+    return response.data;
+  }
+
+  async toggleEmailRecipient(recipientId: string) {
+    const response = await this.client.post(`/admin/email-recipients/${recipientId}/toggle`);
+    return response.data;
+  }
+
+  async sendReport(reportType: string, dateStr?: string) {
+    const response = await this.client.post('/admin/send-report', null, { 
+      params: { report_type: reportType, date_str: dateStr } 
+    });
+    return response.data;
+  }
+
   // Seed data
   async seedAll() {
     const response = await this.client.post('/seed-all');

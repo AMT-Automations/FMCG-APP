@@ -85,6 +85,20 @@ export default function ProfileScreen() {
               </View>
               <Ionicons name="chevron-forward" size={20} color="#64748B" />
             </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={() => router.push('/email-settings')}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: '#1E3A1E' }]}>
+                <Ionicons name="mail" size={20} color="#22C55E" />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>Email Settings</Text>
+                <Text style={styles.menuSubtitle}>Manage report recipients</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#64748B" />
+            </TouchableOpacity>
           </View>
         )}
 

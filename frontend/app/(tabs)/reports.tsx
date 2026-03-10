@@ -99,6 +99,49 @@ export default function ReportsScreen() {
     }
   };
 
+  const handleExportPDF = async () => {
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        Alert.alert('Error', 'Please login to download reports');
+        return;
+      }
+      
+      const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || '';
+      const url = `${baseUrl}/api/reports/export/pdf?date_str=${selectedDate}`;
+      
+      if (Platform.OS === 'web') {
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const blob = await response.blob();
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.setAttribute('download', `sales_report_${selectedDate}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(downloadUrl);
+      } else {
+        Alert.alert(
+          'Export PDF',
+          'The PDF report will be downloaded to your device.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Download', 
+              onPress: () => Linking.openURL(url)
+            }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('PDF Export error:', error);
+      Alert.alert('Error', 'Failed to export PDF report');
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return `R ${amount.toFixed(2)}`;
   };
@@ -129,10 +172,16 @@ export default function ReportsScreen() {
           <Text style={styles.headerTitle}>Reports</Text>
           <Text style={styles.headerSubtitle}>{formatDate(selectedDate)}</Text>
         </View>
-        <TouchableOpacity style={styles.exportButton} onPress={handleExportExcel}>
-          <Ionicons name="download-outline" size={20} color="#FFFFFF" />
-          <Text style={styles.exportButtonText}>Excel</Text>
-        </TouchableOpacity>
+        <View style={styles.exportButtons}>
+          <TouchableOpacity style={styles.exportButton} onPress={handleExportExcel}>
+            <Ionicons name="document-text-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.exportButtonText}>Excel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.exportButton, styles.exportButtonPDF]} onPress={handleExportPDF}>
+            <Ionicons name="document-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.exportButtonText}>PDF</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -320,18 +369,25 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     marginTop: 4,
   },
+  exportButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   exportButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#10B981',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 8,
-    gap: 6,
+    gap: 4,
+  },
+  exportButtonPDF: {
+    backgroundColor: '#EF4444',
   },
   exportButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   scrollView: {
