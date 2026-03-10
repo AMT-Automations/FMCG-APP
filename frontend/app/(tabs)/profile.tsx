@@ -71,6 +71,20 @@ export default function ProfileScreen() {
               </View>
               <Ionicons name="chevron-forward" size={20} color="#64748B" />
             </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={() => router.push('/stock')}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: '#1E3A3B' }]}>
+                <Ionicons name="cube" size={20} color="#06B6D4" />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>Stock Management</Text>
+                <Text style={styles.menuSubtitle}>Receive, adjust, stock take</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#64748B" />
+            </TouchableOpacity>
           </View>
         )}
 

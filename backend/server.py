@@ -2069,7 +2069,7 @@ async def get_customer_prices(customer_id: str, current_user: dict = Depends(get
         raise HTTPException(status_code=404, detail="Customer not found")
     
     products = await db.products.find().to_list(500)
-    custom_prices = customer.get("custom_prices", {})
+    custom_prices = customer.get("custom_prices") or {}
     
     price_list = []
     for product in products:
@@ -2079,8 +2079,8 @@ async def get_customer_prices(customer_id: str, current_user: dict = Depends(get
             "product_name": product["name"],
             "category": product["category"],
             "default_price": product["price"],
-            "custom_price": custom_prices.get(product_id),
-            "effective_price": custom_prices.get(product_id, product["price"])
+            "custom_price": custom_prices.get(product_id) if custom_prices else None,
+            "effective_price": custom_prices.get(product_id, product["price"]) if custom_prices else product["price"]
         })
     
     return {"customer_id": customer_id, "customer_name": customer["name"], "price_list": price_list}
@@ -2105,6 +2105,283 @@ async def update_customer_prices(
     )
     
     return {"message": "Customer prices updated", "customer_id": customer_id}
+
+# ==================== STOCK MANAGEMENT ENDPOINTS ====================
+
+@api_router.get("/stock/levels")
+async def get_stock_levels(current_user: dict = Depends(get_current_user)):
+    """Get current stock levels for all products"""
+    products = await db.products.find().to_list(500)
+    stock_levels = []
+    
+    for product in products:
+        product_id = str(product["_id"])
+        stock_item = await db.stock.find_one({"product_id": product_id})
+        
+        stock_levels.append({
+            "product_id": product_id,
+            "product_name": product["name"],
+            "category": product["category"],
+            "unit_type": product.get("unit_type", "units"),
+            "current_quantity": stock_item.get("quantity", 0) if stock_item else 0,
+            "last_updated": stock_item.get("updated_at") if stock_item else None
+        })
+    
+    return stock_levels
+
+@api_router.post("/stock/receive")
+async def receive_stock(data: StockReceiveCreate, current_user: dict = Depends(get_current_user)):
+    """Record incoming stock from supplier - Admin/Manager only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    # Update or create stock record
+    await db.stock.update_one(
+        {"product_id": data.product_id},
+        {
+            "$inc": {"quantity": data.quantity},
+            "$set": {"product_name": data.product_name, "updated_at": datetime.utcnow()}
+        },
+        upsert=True
+    )
+    
+    # Log the movement
+    movement = {
+        "movement_type": "receive",
+        "product_id": data.product_id,
+        "product_name": data.product_name,
+        "quantity": data.quantity,
+        "supplier": data.supplier,
+        "batch_reference": data.batch_reference,
+        "notes": data.notes,
+        "personnel_id": current_user["id"],
+        "personnel_name": current_user["name"],
+        "created_at": datetime.utcnow()
+    }
+    await db.stock_movements.insert_one(movement)
+    
+    # Get updated stock level
+    stock = await db.stock.find_one({"product_id": data.product_id})
+    
+    return {
+        "message": "Stock received successfully",
+        "product_id": data.product_id,
+        "product_name": data.product_name,
+        "quantity_received": data.quantity,
+        "new_total": stock.get("quantity", 0) if stock else data.quantity
+    }
+
+@api_router.post("/stock/adjustment")
+async def adjust_stock(data: StockAdjustmentCreate, current_user: dict = Depends(get_current_user)):
+    """Adjust stock for damages, spoilage, theft, etc. - Admin/Manager only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    # Get current stock
+    stock = await db.stock.find_one({"product_id": data.product_id})
+    current_qty = stock.get("quantity", 0) if stock else 0
+    
+    # Calculate new quantity
+    new_qty = current_qty + data.adjustment_quantity
+    if new_qty < 0:
+        raise HTTPException(status_code=400, detail=f"Cannot adjust below zero. Current: {current_qty}, Adjustment: {data.adjustment_quantity}")
+    
+    # Update stock
+    await db.stock.update_one(
+        {"product_id": data.product_id},
+        {
+            "$set": {"quantity": new_qty, "product_name": data.product_name, "updated_at": datetime.utcnow()}
+        },
+        upsert=True
+    )
+    
+    # Log the movement
+    movement = {
+        "movement_type": "adjustment",
+        "product_id": data.product_id,
+        "product_name": data.product_name,
+        "quantity": data.adjustment_quantity,
+        "reason": data.reason,
+        "notes": data.notes,
+        "previous_quantity": current_qty,
+        "new_quantity": new_qty,
+        "personnel_id": current_user["id"],
+        "personnel_name": current_user["name"],
+        "created_at": datetime.utcnow()
+    }
+    await db.stock_movements.insert_one(movement)
+    
+    return {
+        "message": "Stock adjusted successfully",
+        "product_id": data.product_id,
+        "product_name": data.product_name,
+        "adjustment": data.adjustment_quantity,
+        "reason": data.reason,
+        "previous_quantity": current_qty,
+        "new_quantity": new_qty
+    }
+
+@api_router.post("/stock/take")
+async def record_stock_take(data: StockTakeCreate, current_user: dict = Depends(get_current_user)):
+    """Record stock take (physical count) - Admin/Manager only"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    variance = data.physical_count - data.system_quantity
+    
+    # Update stock to physical count
+    await db.stock.update_one(
+        {"product_id": data.product_id},
+        {
+            "$set": {
+                "quantity": data.physical_count,
+                "product_name": data.product_name,
+                "updated_at": datetime.utcnow(),
+                "last_stock_take": datetime.utcnow()
+            }
+        },
+        upsert=True
+    )
+    
+    # Log the stock take
+    stock_take_record = {
+        "movement_type": "stock_take",
+        "product_id": data.product_id,
+        "product_name": data.product_name,
+        "system_quantity": data.system_quantity,
+        "physical_count": data.physical_count,
+        "variance": variance,
+        "variance_reason": data.variance_reason,
+        "personnel_id": current_user["id"],
+        "personnel_name": current_user["name"],
+        "created_at": datetime.utcnow()
+    }
+    await db.stock_movements.insert_one(stock_take_record)
+    
+    return {
+        "message": "Stock take recorded",
+        "product_id": data.product_id,
+        "product_name": data.product_name,
+        "system_quantity": data.system_quantity,
+        "physical_count": data.physical_count,
+        "variance": variance,
+        "variance_reason": data.variance_reason
+    }
+
+@api_router.get("/stock/movements")
+async def get_stock_movements(
+    product_id: Optional[str] = None,
+    movement_type: Optional[str] = None,
+    days: int = 30,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get stock movement history"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    start_date = datetime.utcnow() - timedelta(days=days)
+    query = {"created_at": {"$gte": start_date}}
+    
+    if product_id:
+        query["product_id"] = product_id
+    if movement_type:
+        query["movement_type"] = movement_type
+    
+    movements = await db.stock_movements.find(query).sort("created_at", -1).to_list(500)
+    return [str_id(m) for m in movements]
+
+@api_router.get("/stock/report")
+async def get_stock_report(current_user: dict = Depends(get_current_user)):
+    """Generate stock report with opening, received, sold, adjustments, closing"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    products = await db.products.find().to_list(500)
+    report = []
+    
+    # Get date range for this week (Monday to now)
+    today = datetime.utcnow()
+    days_since_monday = today.weekday()
+    week_start = today - timedelta(days=days_since_monday)
+    week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    for product in products:
+        product_id = str(product["_id"])
+        
+        # Get movements for this product this week
+        movements = await db.stock_movements.find({
+            "product_id": product_id,
+            "created_at": {"$gte": week_start}
+        }).to_list(500)
+        
+        # Calculate totals
+        received = sum(m.get("quantity", 0) for m in movements if m.get("movement_type") == "receive")
+        adjustments = sum(m.get("quantity", 0) for m in movements if m.get("movement_type") == "adjustment")
+        
+        # Get sales from sales collection
+        sales = await db.sales.find({
+            "created_at": {"$gte": week_start},
+            "is_voided": {"$ne": True}
+        }).to_list(2000)
+        
+        sold = 0
+        for sale in sales:
+            for item in sale.get("items", []):
+                if item.get("product_id") == product_id:
+                    sold += (item.get("quantity_delivered", 0) - item.get("quantity_returned", 0))
+        
+        # Current stock
+        stock = await db.stock.find_one({"product_id": product_id})
+        closing = stock.get("quantity", 0) if stock else 0
+        
+        # Calculate opening (closing - received - adjustments + sold)
+        opening = closing - received - adjustments + sold
+        
+        report.append({
+            "product_id": product_id,
+            "product_name": product["name"],
+            "category": product["category"],
+            "opening_stock": max(0, opening),
+            "received": received,
+            "sold": sold,
+            "adjustments": adjustments,
+            "closing_stock": closing
+        })
+    
+    return {
+        "report_date": today.isoformat(),
+        "week_start": week_start.isoformat(),
+        "products": report,
+        "summary": {
+            "total_products": len(report),
+            "total_received": sum(p["received"] for p in report),
+            "total_sold": sum(p["sold"] for p in report),
+            "total_adjustments": sum(p["adjustments"] for p in report)
+        }
+    }
+
+@api_router.post("/stock/seed")
+async def seed_stock():
+    """Seed initial stock levels"""
+    products = await db.products.find().to_list(100)
+    
+    for product in products:
+        product_id = str(product["_id"])
+        # Set initial stock level
+        await db.stock.update_one(
+            {"product_id": product_id},
+            {
+                "$set": {
+                    "product_id": product_id,
+                    "product_name": product["name"],
+                    "quantity": 100,  # Default starting stock
+                    "updated_at": datetime.utcnow()
+                }
+            },
+            upsert=True
+        )
+    
+    return {"message": f"Seeded stock for {len(products)} products"}
 
 # ==================== HEALTH CHECK ====================
 

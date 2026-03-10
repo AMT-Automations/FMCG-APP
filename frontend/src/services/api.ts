@@ -346,6 +346,45 @@ class ApiService {
     return response.data;
   }
 
+  // Stock Management
+  async getStockLevels() {
+    const response = await this.client.get('/stock/levels');
+    return response.data;
+  }
+
+  async receiveStock(data: { product_id: string; product_name: string; quantity: number; supplier?: string; batch_reference?: string; notes?: string }) {
+    const response = await this.client.post('/stock/receive', data);
+    return response.data;
+  }
+
+  async adjustStock(data: { product_id: string; product_name: string; adjustment_quantity: number; reason: string; notes?: string }) {
+    const response = await this.client.post('/stock/adjustment', data);
+    return response.data;
+  }
+
+  async recordStockTake(data: { product_id: string; product_name: string; system_quantity: number; physical_count: number; variance_reason?: string }) {
+    const response = await this.client.post('/stock/take', data);
+    return response.data;
+  }
+
+  async getStockMovements(productId?: string, movementType?: string, days: number = 30) {
+    const params: any = { days };
+    if (productId) params.product_id = productId;
+    if (movementType) params.movement_type = movementType;
+    const response = await this.client.get('/stock/movements', { params });
+    return response.data;
+  }
+
+  async getStockReport() {
+    const response = await this.client.get('/stock/report');
+    return response.data;
+  }
+
+  async seedStock() {
+    const response = await this.client.post('/stock/seed');
+    return response.data;
+  }
+
   // Seed data
   async seedAll() {
     const response = await this.client.post('/seed-all');
