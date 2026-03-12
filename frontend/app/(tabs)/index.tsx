@@ -13,6 +13,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/services/api';
+import { LogoHeader } from '../../src/components/LogoHeader';
 
 export default function HomeScreen() {
   const { user } = useAuth();
@@ -91,6 +92,11 @@ export default function HomeScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3B82F6" />
         }
       >
+        {/* Logo Header */}
+        <View style={styles.logoRow}>
+          <LogoHeader size="small" />
+        </View>
+
         {/* Header */}
         <View style={styles.header}>
           <View>
@@ -282,6 +288,15 @@ export default function HomeScreen() {
               </View>
               <Text style={styles.actionText}>Reports</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/invoice-history')}
+            >
+              <View style={[styles.actionIcon, { backgroundColor: '#2E1E3B' }]}>
+                <Ionicons name="receipt" size={24} color="#A855F7" />
+              </View>
+              <Text style={styles.actionText}>Invoices</Text>
+            </TouchableOpacity>
             {(user?.role === 'admin' || user?.role === 'manager') && (
               <TouchableOpacity
                 style={styles.actionCard}
@@ -324,6 +339,9 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+  },
+  logoRow: {
+    marginBottom: 16,
   },
   header: {
     flexDirection: 'row',

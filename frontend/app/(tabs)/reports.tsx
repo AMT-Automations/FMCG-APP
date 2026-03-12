@@ -16,6 +16,7 @@ import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LogoHeader } from '../../src/components/LogoHeader';
 
 export default function ReportsScreen() {
   const [summary, setSummary] = useState<any>(null);
@@ -167,6 +168,9 @@ export default function ReportsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+        <LogoHeader size="small" />
+      </View>
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Reports</Text>

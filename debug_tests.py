@@ -7,7 +7,7 @@ import requests
 import json
 
 # Backend URL from environment
-BASE_URL = "https://cash-ops-tracker.preview.emergentagent.com/api"
+BASE_URL = "https://route-sales-ops.preview.emergentagent.com/api"
 
 # Test credentials
 ADMIN_CREDS = {"phone": "0800000001", "pin": "0000"}

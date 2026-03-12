@@ -126,6 +126,15 @@ class ProductCreate(BaseModel):
     category: str
     unit_type: str  # units, crates, liters
     price: float
+    vat_applicable: bool = True  # True = has VAT, False = VAT exempt
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    unit_type: Optional[str] = None
+    price: Optional[float] = None
+    vat_applicable: Optional[bool] = None
+    is_active: Optional[bool] = None
 
 class ProductResponse(BaseModel):
     id: str
@@ -133,6 +142,8 @@ class ProductResponse(BaseModel):
     category: str
     unit_type: str
     price: float
+    vat_applicable: bool = True
+    is_active: bool = True
 
 class CustomerCreate(BaseModel):
     name: str
@@ -520,7 +531,7 @@ async def create_product(product: ProductCreate, current_user: dict = Depends(ge
     return str_id(product_doc)
 
 @api_router.put("/products/{product_id}", response_model=ProductResponse)
-async def update_product(product_id: str, product: ProductCreate, current_user: dict = Depends(get_current_user)):
+async def update_product(product_id: str, product: ProductUpdate, current_user: dict = Depends(get_current_user)):
     if not is_admin_or_manager(current_user):
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
     
@@ -528,8 +539,9 @@ async def update_product(product_id: str, product: ProductCreate, current_user: 
     if not existing:
         raise HTTPException(status_code=404, detail="Product not found")
     
-    update_data = product.dict()
-    await db.products.update_one({"_id": ObjectId(product_id)}, {"$set": update_data})
+    update_data = {k: v for k, v in product.dict().items() if v is not None}
+    if update_data:
+        await db.products.update_one({"_id": ObjectId(product_id)}, {"$set": update_data})
     
     updated = await db.products.find_one({"_id": ObjectId(product_id)})
     return str_id(updated)

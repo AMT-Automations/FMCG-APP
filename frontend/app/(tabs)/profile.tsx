@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
+import { LogoHeader } from '../../src/components/LogoHeader';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
@@ -37,6 +38,11 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Logo */}
+        <View style={{ marginBottom: 16 }}>
+          <LogoHeader size="small" />
+        </View>
+
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
@@ -94,8 +100,36 @@ export default function ProfileScreen() {
                 <Ionicons name="mail" size={20} color="#22C55E" />
               </View>
               <View style={styles.menuContent}>
-                <Text style={styles.menuTitle}>Email Settings</Text>
+                <Text style={styles.menuTitle}>Email Recipients</Text>
                 <Text style={styles.menuSubtitle}>Manage report recipients</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#64748B" />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={() => router.push('/smtp-settings')}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: '#2E1E3B' }]}>
+                <Ionicons name="server" size={20} color="#A855F7" />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>SMTP Settings</Text>
+                <Text style={styles.menuSubtitle}>Configure email server</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#64748B" />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={() => router.push('/invoice-history')}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: '#1E3A5F' }]}>
+                <Ionicons name="receipt" size={20} color="#3B82F6" />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>Invoice History</Text>
+                <Text style={styles.menuSubtitle}>View all past invoices</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#64748B" />
             </TouchableOpacity>

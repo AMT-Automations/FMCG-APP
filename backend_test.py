@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Backend URL - using the correct environment URL
-BACKEND_URL = "https://cash-ops-tracker.preview.emergentagent.com/api"
+BACKEND_URL = "https://route-sales-ops.preview.emergentagent.com/api"
 
 # Test credentials
 ADMIN_CREDENTIALS = {

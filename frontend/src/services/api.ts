@@ -310,11 +310,6 @@ class ApiService {
     return response.data;
   }
 
-  async endDailyRoute(routeId: string, data: { closing_km: number; crates_in: number; damages_count?: number; fuel_used?: number; notes?: string }) {
-    const response = await this.client.put(`/daily-routes/${routeId}/end`, data);
-    return response.data;
-  }
-
   // Vehicles
   async getVehicles(includeInactive: boolean = false) {
     const params = includeInactive ? { include_inactive: true } : {};
@@ -437,6 +432,17 @@ class ApiService {
     const response = await this.client.post('/admin/send-report', null, { 
       params: { report_type: reportType, date_str: dateStr } 
     });
+    return response.data;
+  }
+
+  // SMTP Settings
+  async getSmtpSettings() {
+    const response = await this.client.get('/admin/settings/email');
+    return response.data;
+  }
+
+  async saveSmtpSettings(data: { sender_email: string; sender_password: string; smtp_server: string; smtp_port: number }) {
+    const response = await this.client.post('/admin/settings/email', data);
     return response.data;
   }
 

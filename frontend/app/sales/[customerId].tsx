@@ -13,7 +13,7 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
 
@@ -23,6 +23,7 @@ interface Product {
   category: string;
   unit_type: string;
   price: number;
+  vat_applicable: boolean;
 }
 
 interface SaleItem {
@@ -32,6 +33,7 @@ interface SaleItem {
   quantity_returned: number;
   damages: number;
   unit_price: number;
+  vat_applicable: boolean;
 }
 
 interface SplitPayment {
@@ -46,6 +48,8 @@ const PAYMENT_METHODS = [
   { id: 'shop2shop', name: 'Shop2Shop', icon: 'storefront-outline' },
   { id: 'kazang', name: 'Kazang', icon: 'phone-portrait-outline' },
 ];
+
+const VAT_RATE = 0.15; // 15% VAT in South Africa
 
 export default function SalesEntryScreen() {
   const router = useRouter();
@@ -62,10 +66,6 @@ export default function SalesEntryScreen() {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  
-  // VAT options
-  const [includeVat, setIncludeVat] = useState(true); // true = VAT inclusive, false = VAT exclusive
-  const VAT_RATE = 0.15; // 15% VAT in South Africa
 
   const customerName = name ? decodeURIComponent(name) : 'Customer';
 
@@ -80,7 +80,7 @@ export default function SalesEntryScreen() {
         api.getActiveDailyRoute(),
       ]);
       
-      // Try to get customer-specific prices if customer ID is available
+      // Try to get customer-specific prices
       let customerPrices: Record<string, number> = {};
       if (customerId) {
         try {
@@ -93,16 +93,15 @@ export default function SalesEntryScreen() {
             });
           }
         } catch (e) {
-          // Customer-specific prices not available, use default
           console.log('Using default prices');
         }
       }
       
-      // Apply customer-specific prices to products
-      const productsWithPrices = productsData.map((product: Product) => ({
+      // Apply customer-specific prices and preserve vat_applicable
+      const productsWithPrices = productsData.map((product: any) => ({
         ...product,
         price: customerPrices[product.id] || product.price,
-        hasCustomPrice: !!customerPrices[product.id],
+        vat_applicable: product.vat_applicable !== false, // default to true if not set
       }));
       
       setProducts(productsWithPrices);
@@ -123,6 +122,7 @@ export default function SalesEntryScreen() {
         quantity_returned: 0,
         damages: 0,
         unit_price: product.price,
+        vat_applicable: product.vat_applicable,
       };
       return {
         ...prev,
@@ -134,32 +134,30 @@ export default function SalesEntryScreen() {
     });
   };
 
-  const calculateTotal = () => {
-    const subtotal = Object.values(items).reduce((sum, item) => {
+  // Calculate subtotal (sum of all item line totals)
+  const calculateSubtotal = () => {
+    return Object.values(items).reduce((sum, item) => {
       const net = item.quantity_delivered - item.quantity_returned;
       return sum + net * item.unit_price;
     }, 0);
-    return subtotal;
   };
 
+  // Calculate VAT amount (only from VAT-applicable products)
+  // Prices are VAT-inclusive, so we extract the VAT component
   const calculateVatAmount = () => {
-    const subtotal = calculateTotal();
-    if (includeVat) {
-      // Price is VAT inclusive, extract VAT amount
-      return subtotal - (subtotal / (1 + VAT_RATE));
-    } else {
-      // Price is VAT exclusive, add VAT
-      return subtotal * VAT_RATE;
-    }
+    return Object.values(items).reduce((sum, item) => {
+      if (!item.vat_applicable) return sum;
+      const net = item.quantity_delivered - item.quantity_returned;
+      const lineTotal = net * item.unit_price;
+      // Extract VAT from inclusive price: VAT = price - (price / 1.15)
+      const vatPortion = lineTotal - (lineTotal / (1 + VAT_RATE));
+      return sum + vatPortion;
+    }, 0);
   };
 
+  // Final total is the same as subtotal since prices are VAT-inclusive
   const calculateFinalTotal = () => {
-    const subtotal = calculateTotal();
-    if (includeVat) {
-      return subtotal; // Already includes VAT
-    } else {
-      return subtotal * (1 + VAT_RATE); // Add VAT
-    }
+    return calculateSubtotal();
   };
 
   const handleSave = async () => {
@@ -172,7 +170,10 @@ export default function SalesEntryScreen() {
       return;
     }
 
-    if (!cashCollected || parseFloat(cashCollected) <= 0) {
+    const finalTotal = calculateFinalTotal();
+    const cashAmount = parseFloat(cashCollected || '0');
+
+    if (cashAmount <= 0 && paymentType !== 'split') {
       Alert.alert('Error', 'Please enter payment amount');
       return;
     }
@@ -197,64 +198,42 @@ export default function SalesEntryScreen() {
         route_id: activeRoute.route_id,
         customer_id: customerId || '',
         customer_name: customerName,
-        items: saleItems,
+        items: saleItems.map(item => ({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity_delivered: item.quantity_delivered,
+          quantity_returned: item.quantity_returned,
+          damages: item.damages,
+          unit_price: item.unit_price,
+        })),
         crates_dropped: parseInt(cratesDropped) || 0,
         crates_collected: parseInt(cratesCollected) || 0,
-        cash_collected: parseFloat(cashCollected),
+        cash_collected: cashAmount,
         payment_type: paymentType,
         split_payments: splitPaymentsData,
         notes: notes || undefined,
       });
       
-      // Get values for display
-      const invoiceNumber = result.invoice_number || 'N/A';
-      const invoiceTotal = result.total_amount || saleItems.reduce((sum, item) => {
-        return sum + (item.quantity_delivered - item.quantity_returned) * item.unit_price;
-      }, 0);
-      const cashReceived = parseFloat(cashCollected);
-      const shortageAmount = result.shortage_amount || Math.max(0, invoiceTotal - cashReceived);
-      const cratesNet = (parseInt(cratesDropped) || 0) - (parseInt(cratesCollected) || 0);
-      
-      // Show detailed success with invoice number prominently displayed
-      const title = `✅ SALE RECORDED`;
-      let message = `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `📄 INVOICE: ${invoiceNumber}\n`;
-      message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      message += `👤 Customer: ${customerName}\n`;
-      message += `🚗 Route: ${activeRoute.route_name}\n`;
-      message += `📅 Date: ${new Date().toLocaleDateString()}\n`;
-      message += `🕐 Time: ${new Date().toLocaleTimeString()}\n\n`;
-      message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `💰 Invoice Total:    R ${invoiceTotal.toFixed(2)}\n`;
-      
-      // Show payment breakdown
-      if (paymentType === 'split' && splitPayments.length > 0) {
-        message += `\n💳 Payment Split:\n`;
-        splitPayments.forEach(sp => {
-          const methodName = PAYMENT_METHODS.find(m => m.id === sp.method)?.name || sp.method;
-          message += `   • ${methodName}: R ${parseFloat(sp.amount).toFixed(2)}\n`;
-        });
-      } else {
-        const methodName = PAYMENT_METHODS.find(m => m.id === paymentType)?.name || paymentType;
-        message += `💳 Payment (${methodName}): R ${cashReceived.toFixed(2)}\n`;
-      }
-      
-      if (shortageAmount > 0) {
-        message += `\n⚠️ SHORTAGE: R ${shortageAmount.toFixed(2)}\n`;
-      }
-      
-      // Crates info
-      if (parseInt(cratesDropped) > 0 || parseInt(cratesCollected) > 0) {
-        message += `\n📦 Crates Dropped: ${cratesDropped || 0}\n`;
-        message += `📦 Crates Collected: ${cratesCollected || 0}\n`;
-        message += `📦 Net with Customer: ${cratesNet}\n`;
-      }
-      
-      message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-      
-      Alert.alert(title, message, [
-        { text: 'Done', onPress: () => router.back() },
-      ]);
+      // Navigate to receipt screen with full details
+      router.replace({
+        pathname: '/invoice-receipt',
+        params: {
+          invoiceNumber: result.invoice_number || 'N/A',
+          customerName: customerName,
+          routeName: activeRoute.route_name || '',
+          totalAmount: String(result.total_amount || finalTotal),
+          cashReceived: String(cashAmount),
+          shortageAmount: String(result.shortage_amount || Math.max(0, finalTotal - cashAmount)),
+          vatAmount: String(calculateVatAmount()),
+          cratesDropped: cratesDropped || '0',
+          cratesCollected: cratesCollected || '0',
+          paymentType: paymentType,
+          splitPayments: JSON.stringify(splitPayments.filter(sp => parseFloat(sp.amount || '0') > 0)),
+          items: JSON.stringify(saleItems),
+          date: new Date().toLocaleDateString(),
+          time: new Date().toLocaleTimeString(),
+        },
+      });
     } catch (error: any) {
       console.error('Sale error:', error);
       Alert.alert('Error', error.response?.data?.detail || 'Failed to record sale');
@@ -281,7 +260,7 @@ export default function SalesEntryScreen() {
     );
   }
 
-  const total = calculateTotal();
+  const subtotal = calculateSubtotal();
   const vatAmount = calculateVatAmount();
   const finalTotal = calculateFinalTotal();
 
@@ -312,11 +291,23 @@ export default function SalesEntryScreen() {
                 return (
                   <View key={product.id} style={styles.productCard}>
                     <View style={styles.productHeader}>
-                      <View>
+                      <View style={styles.productHeaderLeft}>
                         <Text style={styles.productName}>{product.name}</Text>
-                        <Text style={styles.productPrice}>
-                          R {product.price.toFixed(2)} / {product.unit_type}
-                        </Text>
+                        <View style={styles.productMeta}>
+                          <Text style={styles.productPrice}>
+                            R{product.price.toFixed(2)} / {product.unit_type}
+                          </Text>
+                          {product.vat_applicable && (
+                            <View style={styles.vatBadge}>
+                              <Text style={styles.vatBadgeText}>VAT incl.</Text>
+                            </View>
+                          )}
+                          {!product.vat_applicable && (
+                            <View style={styles.vatExemptBadge}>
+                              <Text style={styles.vatExemptBadgeText}>No VAT</Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
                     </View>
 
@@ -327,11 +318,8 @@ export default function SalesEntryScreen() {
                           <TouchableOpacity
                             style={styles.quantityButton}
                             onPress={() =>
-                              updateItem(
-                                product,
-                                'quantity_delivered',
-                                Math.max(0, (item?.quantity_delivered || 0) - 1)
-                              )
+                              updateItem(product, 'quantity_delivered',
+                                Math.max(0, (item?.quantity_delivered || 0) - 1))
                             }
                           >
                             <Ionicons name="remove" size={18} color="#FFFFFF" />
@@ -347,11 +335,8 @@ export default function SalesEntryScreen() {
                           <TouchableOpacity
                             style={[styles.quantityButton, styles.quantityButtonAdd]}
                             onPress={() =>
-                              updateItem(
-                                product,
-                                'quantity_delivered',
-                                (item?.quantity_delivered || 0) + 1
-                              )
+                              updateItem(product, 'quantity_delivered',
+                                (item?.quantity_delivered || 0) + 1)
                             }
                           >
                             <Ionicons name="add" size={18} color="#FFFFFF" />
@@ -365,11 +350,8 @@ export default function SalesEntryScreen() {
                           <TouchableOpacity
                             style={styles.quantityButton}
                             onPress={() =>
-                              updateItem(
-                                product,
-                                'quantity_returned',
-                                Math.max(0, (item?.quantity_returned || 0) - 1)
-                              )
+                              updateItem(product, 'quantity_returned',
+                                Math.max(0, (item?.quantity_returned || 0) - 1))
                             }
                           >
                             <Ionicons name="remove" size={18} color="#FFFFFF" />
@@ -385,11 +367,8 @@ export default function SalesEntryScreen() {
                           <TouchableOpacity
                             style={[styles.quantityButton, styles.quantityButtonAdd]}
                             onPress={() =>
-                              updateItem(
-                                product,
-                                'quantity_returned',
-                                (item?.quantity_returned || 0) + 1
-                              )
+                              updateItem(product, 'quantity_returned',
+                                (item?.quantity_returned || 0) + 1)
                             }
                           >
                             <Ionicons name="add" size={18} color="#FFFFFF" />
@@ -403,11 +382,8 @@ export default function SalesEntryScreen() {
                           <TouchableOpacity
                             style={styles.quantityButton}
                             onPress={() =>
-                              updateItem(
-                                product,
-                                'damages',
-                                Math.max(0, (item?.damages || 0) - 1)
-                              )
+                              updateItem(product, 'damages',
+                                Math.max(0, (item?.damages || 0) - 1))
                             }
                           >
                             <Ionicons name="remove" size={18} color="#FFFFFF" />
@@ -440,7 +416,6 @@ export default function SalesEntryScreen() {
           {/* Crates Section */}
           <View style={styles.cratesSection}>
             <Text style={styles.sectionTitle}>Crate Tracking</Text>
-            
             <View style={styles.cratesRow}>
               <View style={styles.cratesInputGroup}>
                 <Text style={styles.cratesLabel}>Crates Dropped Off</Text>
@@ -456,7 +431,6 @@ export default function SalesEntryScreen() {
                   />
                 </View>
               </View>
-              
               <View style={styles.cratesInputGroup}>
                 <Text style={styles.cratesLabel}>Crates Collected</Text>
                 <View style={styles.cratesInputContainer}>
@@ -472,7 +446,6 @@ export default function SalesEntryScreen() {
                 </View>
               </View>
             </View>
-            
             <View style={styles.cratesNetRow}>
               <Text style={styles.cratesNetLabel}>Net Crates:</Text>
               <Text style={[
@@ -488,47 +461,28 @@ export default function SalesEntryScreen() {
           <View style={styles.paymentSection}>
             <Text style={styles.sectionTitle}>Payment</Text>
 
-            {/* VAT Toggle */}
-            <View style={styles.vatToggleContainer}>
-              <Text style={styles.vatToggleLabel}>Pricing:</Text>
-              <View style={styles.vatToggleButtons}>
-                <TouchableOpacity
-                  style={[styles.vatToggleButton, includeVat && styles.vatToggleButtonActive]}
-                  onPress={() => setIncludeVat(true)}
-                >
-                  <Text style={[styles.vatToggleButtonText, includeVat && styles.vatToggleButtonTextActive]}>
-                    VAT Inclusive
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.vatToggleButton, !includeVat && styles.vatToggleButtonActive]}
-                  onPress={() => setIncludeVat(false)}
-                >
-                  <Text style={[styles.vatToggleButtonText, !includeVat && styles.vatToggleButtonTextActive]}>
-                    VAT Exclusive
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
+            {/* Totals Card - VAT auto-calculated */}
             <View style={styles.totalCard}>
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Subtotal</Text>
-                <Text style={styles.subtotalValue}>R {total.toFixed(2)}</Text>
+                <Text style={styles.totalLabel}>Items Total</Text>
+                <Text style={styles.subtotalValue}>R{subtotal.toFixed(2)}</Text>
               </View>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>VAT (15%)</Text>
-                <Text style={styles.vatValue}>R {vatAmount.toFixed(2)}</Text>
-              </View>
+              {vatAmount > 0 && (
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>VAT (15% included)</Text>
+                  <Text style={styles.vatValue}>R{vatAmount.toFixed(2)}</Text>
+                </View>
+              )}
               <View style={[styles.totalRow, styles.totalRowFinal]}>
                 <Text style={styles.totalLabelFinal}>Invoice Total</Text>
-                <Text style={styles.totalValue}>R {finalTotal.toFixed(2)}</Text>
+                <Text style={styles.totalValueFinal}>R{finalTotal.toFixed(2)}</Text>
               </View>
             </View>
 
+            {/* Payment Methods */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputGroupLabel}>Payment Method</Text>
-              <View style={styles.paymentTypes}>
+              <View style={styles.paymentTypesGrid}>
                 {PAYMENT_METHODS.map((method) => (
                   <TouchableOpacity
                     key={method.id}
@@ -543,7 +497,7 @@ export default function SalesEntryScreen() {
                   >
                     <Ionicons
                       name={method.icon as any}
-                      size={18}
+                      size={20}
                       color={paymentType === method.id ? '#FFFFFF' : '#64748B'}
                     />
                     <Text
@@ -569,7 +523,7 @@ export default function SalesEntryScreen() {
                   setShowSplitModal(true);
                 }}
               >
-                <Ionicons name="git-branch-outline" size={18} color={paymentType === 'split' ? '#FFFFFF' : '#3B82F6'} />
+                <Ionicons name="git-branch-outline" size={20} color={paymentType === 'split' ? '#FFFFFF' : '#3B82F6'} />
                 <Text style={[styles.splitButtonText, paymentType === 'split' && { color: '#FFFFFF' }]}>
                   Split Payment
                 </Text>
@@ -585,7 +539,7 @@ export default function SalesEntryScreen() {
                     <Text style={styles.splitItemMethod}>
                       {PAYMENT_METHODS.find(m => m.id === sp.method)?.name || sp.method}
                     </Text>
-                    <Text style={styles.splitItemAmount}>R {parseFloat(sp.amount || '0').toFixed(2)}</Text>
+                    <Text style={styles.splitItemAmount}>R{parseFloat(sp.amount || '0').toFixed(2)}</Text>
                   </View>
                 ))}
                 <TouchableOpacity
@@ -597,6 +551,7 @@ export default function SalesEntryScreen() {
               </View>
             )}
 
+            {/* Cash Input */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputGroupLabel}>Total Received *</Text>
               <View style={styles.cashInputContainer}>
@@ -624,11 +579,12 @@ export default function SalesEntryScreen() {
                   <Text style={styles.shortageLabel}>Shortage Amount</Text>
                 </View>
                 <Text style={styles.shortageValue}>
-                  R {(finalTotal - parseFloat(cashCollected || '0')).toFixed(2)}
+                  R{(finalTotal - parseFloat(cashCollected || '0')).toFixed(2)}
                 </Text>
               </View>
             )}
 
+            {/* Notes */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputGroupLabel}>Notes (Optional)</Text>
               <TextInput
@@ -647,8 +603,8 @@ export default function SalesEntryScreen() {
         {/* Save Button */}
         <View style={styles.footer}>
           <View style={styles.footerTotal}>
-            <Text style={styles.footerTotalLabel}>Total (incl. VAT)</Text>
-            <Text style={styles.footerTotalValue}>R {finalTotal.toFixed(2)}</Text>
+            <Text style={styles.footerTotalLabel}>Invoice Total</Text>
+            <Text style={styles.footerTotalValue}>R{finalTotal.toFixed(2)}</Text>
           </View>
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
@@ -666,74 +622,85 @@ export default function SalesEntryScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Split Payment Modal */}
+        {/* Split Payment Modal - Redesigned */}
         <Modal visible={showSplitModal} animationType="slide" transparent>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Split Payment</Text>
-                <TouchableOpacity onPress={() => setShowSplitModal(false)}>
+          <View style={splitStyles.overlay}>
+            <View style={splitStyles.content}>
+              {/* Modal Header */}
+              <View style={splitStyles.header}>
+                <Text style={splitStyles.title}>Split Payment</Text>
+                <TouchableOpacity 
+                  onPress={() => setShowSplitModal(false)}
+                  style={splitStyles.closeBtn}
+                >
                   <Ionicons name="close" size={24} color="#94A3B8" />
                 </TouchableOpacity>
               </View>
               
-              <Text style={styles.modalSubtitle}>
-                Invoice Total: R {total.toFixed(2)}
-              </Text>
-              
-              {PAYMENT_METHODS.map((method) => {
-                const existing = splitPayments.find(sp => sp.method === method.id);
-                return (
-                  <View key={method.id} style={styles.splitPaymentRow}>
-                    <View style={styles.splitPaymentLabel}>
-                      <Ionicons name={method.icon as any} size={20} color="#94A3B8" />
-                      <Text style={styles.splitPaymentLabelText}>{method.name}</Text>
-                    </View>
-                    <View style={styles.splitPaymentInput}>
-                      <Text style={styles.splitCurrencyPrefix}>R</Text>
-                      <TextInput
-                        style={styles.splitAmountInput}
-                        placeholder="0.00"
-                        placeholderTextColor="#64748B"
-                        keyboardType="numeric"
-                        value={existing?.amount || ''}
-                        onChangeText={(text) => {
-                          const updated = splitPayments.filter(sp => sp.method !== method.id);
-                          if (text && parseFloat(text) > 0) {
-                            updated.push({ method: method.id, amount: text, reference: '' });
-                          }
-                          setSplitPayments(updated);
-                          // Update total
-                          const newTotal = updated.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0);
-                          setCashCollected(newTotal.toFixed(2));
-                        }}
-                      />
-                    </View>
-                  </View>
-                );
-              })}
-              
-              <View style={styles.splitTotalRow}>
-                <Text style={styles.splitTotalLabel}>Total Received:</Text>
-                <Text style={styles.splitTotalValue}>
-                  R {splitPayments.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0).toFixed(2)}
-                </Text>
+              {/* Invoice Total */}
+              <View style={splitStyles.totalBanner}>
+                <Text style={splitStyles.totalBannerLabel}>Invoice Total</Text>
+                <Text style={splitStyles.totalBannerValue}>R{finalTotal.toFixed(2)}</Text>
               </View>
               
-              {splitPayments.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0) < total && (
-                <View style={styles.splitShortageRow}>
-                  <Text style={styles.splitShortageLabel}>Shortage:</Text>
-                  <Text style={styles.splitShortageValue}>
-                    R {(total - splitPayments.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0)).toFixed(2)}
+              <ScrollView style={splitStyles.methodsList}>
+                {/* Payment method inputs - each on its own row */}
+                {PAYMENT_METHODS.map((method) => {
+                  const existing = splitPayments.find(sp => sp.method === method.id);
+                  return (
+                    <View key={method.id} style={splitStyles.methodCard}>
+                      <View style={splitStyles.methodHeader}>
+                        <Ionicons name={method.icon as any} size={22} color="#3B82F6" />
+                        <Text style={splitStyles.methodName}>{method.name}</Text>
+                      </View>
+                      <View style={splitStyles.amountInputContainer}>
+                        <Text style={splitStyles.currencySymbol}>R</Text>
+                        <TextInput
+                          style={splitStyles.amountInput}
+                          placeholder="0.00"
+                          placeholderTextColor="#475569"
+                          keyboardType="numeric"
+                          value={existing?.amount || ''}
+                          onChangeText={(text) => {
+                            const updated = splitPayments.filter(sp => sp.method !== method.id);
+                            if (text && parseFloat(text) > 0) {
+                              updated.push({ method: method.id, amount: text, reference: '' });
+                            }
+                            setSplitPayments(updated);
+                            const newTotal = updated.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0);
+                            setCashCollected(newTotal.toFixed(2));
+                          }}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+              
+              {/* Summary at bottom */}
+              <View style={splitStyles.summary}>
+                <View style={splitStyles.summaryRow}>
+                  <Text style={splitStyles.summaryLabel}>Total Received</Text>
+                  <Text style={splitStyles.summaryValue}>
+                    R{splitPayments.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0).toFixed(2)}
                   </Text>
                 </View>
-              )}
+                
+                {splitPayments.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0) < finalTotal && (
+                  <View style={splitStyles.shortageRow}>
+                    <Text style={splitStyles.shortageLabel}>Shortage</Text>
+                    <Text style={splitStyles.shortageValue}>
+                      R{(finalTotal - splitPayments.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0)).toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+              </View>
               
               <TouchableOpacity
-                style={styles.splitDoneButton}
+                style={splitStyles.doneButton}
                 onPress={() => setShowSplitModal(false)}
               >
-                <Text style={styles.splitDoneButtonText}>Done</Text>
+                <Text style={splitStyles.doneButtonText}>Done</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -743,6 +710,153 @@ export default function SalesEntryScreen() {
   );
 }
 
+// Split Payment Modal styles - separate for clarity
+const splitStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  content: {
+    backgroundColor: '#1E293B',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  closeBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  totalBanner: {
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  totalBannerLabel: {
+    fontSize: 13,
+    color: '#94A3B8',
+    marginBottom: 4,
+  },
+  totalBannerValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#10B981',
+  },
+  methodsList: {
+    maxHeight: 320,
+  },
+  methodCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  methodHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  methodName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  amountInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#334155',
+    paddingHorizontal: 16,
+    height: 52,
+  },
+  currencySymbol: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#10B981',
+    marginRight: 8,
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    height: 52,
+    padding: 0,
+  },
+  summary: {
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+    paddingTop: 16,
+    marginTop: 8,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  summaryLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  summaryValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#10B981',
+  },
+  shortageRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#422006',
+    borderRadius: 8,
+    padding: 12,
+  },
+  shortageLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F59E0B',
+  },
+  shortageValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#F59E0B',
+  },
+  doneButton: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  doneButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+});
+
+// Main screen styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -764,8 +878,8 @@ const styles = StyleSheet.create({
     borderBottomColor: '#334155',
   },
   closeButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -807,15 +921,43 @@ const styles = StyleSheet.create({
   productHeader: {
     marginBottom: 12,
   },
+  productHeaderLeft: {},
   productName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  productMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
   productPrice: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#10B981',
-    marginTop: 2,
+  },
+  vatBadge: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  vatBadgeText: {
+    fontSize: 10,
+    color: '#3B82F6',
+    fontWeight: '600',
+  },
+  vatExemptBadge: {
+    backgroundColor: 'rgba(148, 163, 184, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  vatExemptBadgeText: {
+    fontSize: 10,
+    color: '#94A3B8',
+    fontWeight: '600',
   },
   productInputs: {
     gap: 12,
@@ -856,219 +998,17 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     padding: 0,
   },
-  paymentSection: {
+  cratesSection: {
     marginBottom: 24,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
     marginBottom: 16,
-  },
-  totalCard: {
-    backgroundColor: '#1E3A5F',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  totalRowFinal: {
-    borderTopWidth: 1,
-    borderTopColor: '#334155',
-    marginTop: 8,
-    paddingTop: 12,
-  },
-  totalLabel: {
-    fontSize: 14,
-    color: '#94A3B8',
-  },
-  totalLabelFinal: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  subtotalValue: {
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  vatValue: {
-    fontSize: 14,
-    color: '#64748B',
-  },
-  totalValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#10B981',
-  },
-  vatToggleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 12,
-  },
-  vatToggleLabel: {
-    fontSize: 14,
-    color: '#94A3B8',
-  },
-  vatToggleButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  vatToggleButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#0F172A',
-  },
-  vatToggleButtonActive: {
-    backgroundColor: '#3B82F6',
-  },
-  vatToggleButtonText: {
-    fontSize: 12,
-    color: '#64748B',
-  },
-  vatToggleButtonTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  shortageCard: {
-    backgroundColor: '#422006',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#F59E0B',
-  },
-  shortageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  shortageLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#F59E0B',
-  },
-  shortageValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#F59E0B',
-    textAlign: 'center',
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  inputGroupLabel: {
-    fontSize: 14,
-    color: '#94A3B8',
-    marginBottom: 8,
-  },
-  cashInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-  },
-  currencyPrefix: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#10B981',
-  },
-  cashInput: {
-    flex: 1,
-    height: 52,
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginLeft: 8,
-  },
-  paymentTypes: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  paymentTypeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-  },
-  paymentTypeButtonActive: {
-    backgroundColor: '#3B82F6',
-  },
-  paymentTypeText: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  paymentTypeTextActive: {
-    color: '#FFFFFF',
-  },
-  notesInput: {
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 14,
-    color: '#FFFFFF',
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#334155',
-    gap: 16,
-  },
-  footerTotal: {
-    flex: 1,
-  },
-  footerTotalLabel: {
-    fontSize: 12,
-    color: '#64748B',
-  },
-  footerTotalValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#10B981',
-    borderRadius: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    gap: 8,
-  },
-  saveButtonDisabled: {
-    opacity: 0.7,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  cratesSection: {
-    marginBottom: 24,
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 16,
   },
   cratesRow: {
     flexDirection: 'row',
@@ -1115,14 +1055,93 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  paymentSection: {
+    marginBottom: 24,
+  },
+  totalCard: {
+    backgroundColor: '#1E3A5F',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  totalRowFinal: {
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+    marginTop: 8,
+    paddingTop: 12,
+  },
+  totalLabel: {
+    fontSize: 14,
+    color: '#94A3B8',
+  },
+  subtotalValue: {
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  vatValue: {
+    fontSize: 14,
+    color: '#64748B',
+  },
+  totalLabelFinal: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  totalValueFinal: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#10B981',
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputGroupLabel: {
+    fontSize: 14,
+    color: '#94A3B8',
+    marginBottom: 8,
+  },
+  paymentTypesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  paymentTypeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 8,
+    width: '48%',
+    flexGrow: 1,
+  },
+  paymentTypeButtonActive: {
+    backgroundColor: '#3B82F6',
+  },
+  paymentTypeText: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  paymentTypeTextActive: {
+    color: '#FFFFFF',
+  },
   splitButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#1E3A5F',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 12,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 10,
     gap: 8,
     borderWidth: 1,
     borderColor: '#3B82F6',
@@ -1131,7 +1150,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#3B82F6',
   },
   splitButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: '#3B82F6',
   },
@@ -1170,6 +1189,7 @@ const styles = StyleSheet.create({
   editSplitButtonText: {
     fontSize: 14,
     color: '#3B82F6',
+    fontWeight: '600',
   },
   splitNote: {
     fontSize: 12,
@@ -1177,114 +1197,94 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontStyle: 'italic',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
+  cashInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#1E293B',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: '85%',
+    borderRadius: 12,
+    paddingHorizontal: 16,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
+  currencyPrefix: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  modalSubtitle: {
-    fontSize: 16,
+    fontWeight: '600',
     color: '#10B981',
-    marginBottom: 20,
-    textAlign: 'center',
   },
-  splitPaymentRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  cashInput: {
+    flex: 1,
+    height: 52,
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginLeft: 8,
+  },
+  shortageCard: {
+    backgroundColor: '#422006',
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 16,
-    paddingRight: 4,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
   },
-  splitPaymentLabel: {
+  shortageRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    width: 110,
+    marginBottom: 8,
   },
-  splitPaymentLabelText: {
-    fontSize: 13,
-    color: '#FFFFFF',
-  },
-  splitPaymentInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0F172A',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    width: 130,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  splitCurrencyPrefix: {
+  shortageLabel: {
     fontSize: 14,
-    color: '#64748B',
-    marginRight: 4,
-  },
-  splitAmountInput: {
-    flex: 1,
-    height: 44,
-    fontSize: 16,
-    color: '#FFFFFF',
-    textAlign: 'right',
-  },
-  splitTotalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: '#334155',
-    paddingTop: 16,
-    marginTop: 8,
-  },
-  splitTotalLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  splitTotalValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#10B981',
-  },
-  splitShortageRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  splitShortageLabel: {
-    fontSize: 14,
+    fontWeight: '500',
     color: '#F59E0B',
   },
-  splitShortageValue: {
-    fontSize: 16,
-    fontWeight: '600',
+  shortageValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
     color: '#F59E0B',
+    textAlign: 'center',
   },
-  splitDoneButton: {
-    backgroundColor: '#3B82F6',
+  notesInput: {
+    backgroundColor: '#1E293B',
     borderRadius: 12,
     padding: 16,
-    alignItems: 'center',
-    marginTop: 20,
+    fontSize: 14,
+    color: '#FFFFFF',
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
-  splitDoneButtonText: {
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+    gap: 16,
+  },
+  footerTotal: {
+    flex: 1,
+  },
+  footerTotalLabel: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  footerTotalValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10B981',
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  saveButtonDisabled: {
+    opacity: 0.7,
+  },
+  saveButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',

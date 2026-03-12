@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
+import { LogoHeader } from '../../src/components/LogoHeader';
 
 interface Customer {
   id: string;
@@ -216,6 +217,10 @@ export default function RouteScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Logo */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+        <LogoHeader size="small" showText={false} />
+      </View>
       {/* Header */}
       <View style={styles.header}>
         <View>
