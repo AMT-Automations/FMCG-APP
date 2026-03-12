@@ -21,12 +21,12 @@ export default function Index() {
     <View style={styles.container}>
       <View style={styles.logoContainer}>
         <Image
-          source={require('../assets/logo.png')}
+          source={require('../assets/icon.png')}
           style={styles.logo}
-          resizeMode="contain"
+          resizeMode="cover"
         />
-        <Text style={styles.tagline}>UMOJA NI NGUVU</Text>
-        <Text style={styles.subtitle}>Distribution Tracker</Text>
+        <Text style={styles.tagline}>Mzansi Distribution Tracker</Text>
+        <Text style={styles.subtitle}>Smart Routes. Stronger Distribution.</Text>
       </View>
       <ActivityIndicator size="large" color="#3B82F6" style={styles.loader} />
     </View>
@@ -44,20 +44,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 200,
-    height: 150,
+    width: 120,
+    height: 120,
+    borderRadius: 30,
     marginBottom: 16,
+    overflow: 'hidden',
   },
   tagline: {
-    fontSize: 14,
-    color: '#4A9B8C',
-    letterSpacing: 4,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
     marginTop: 8,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#94A3B8',
     marginTop: 8,
+    fontStyle: 'italic',
   },
   loader: {
     marginTop: 40,
