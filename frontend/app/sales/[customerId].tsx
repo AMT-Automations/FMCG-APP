@@ -62,6 +62,10 @@ export default function SalesEntryScreen() {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  
+  // VAT options
+  const [includeVat, setIncludeVat] = useState(true); // true = VAT inclusive, false = VAT exclusive
+  const VAT_RATE = 0.15; // 15% VAT in South Africa
 
   const customerName = name ? decodeURIComponent(name) : 'Customer';
 
@@ -131,10 +135,31 @@ export default function SalesEntryScreen() {
   };
 
   const calculateTotal = () => {
-    return Object.values(items).reduce((sum, item) => {
+    const subtotal = Object.values(items).reduce((sum, item) => {
       const net = item.quantity_delivered - item.quantity_returned;
       return sum + net * item.unit_price;
     }, 0);
+    return subtotal;
+  };
+
+  const calculateVatAmount = () => {
+    const subtotal = calculateTotal();
+    if (includeVat) {
+      // Price is VAT inclusive, extract VAT amount
+      return subtotal - (subtotal / (1 + VAT_RATE));
+    } else {
+      // Price is VAT exclusive, add VAT
+      return subtotal * VAT_RATE;
+    }
+  };
+
+  const calculateFinalTotal = () => {
+    const subtotal = calculateTotal();
+    if (includeVat) {
+      return subtotal; // Already includes VAT
+    } else {
+      return subtotal * (1 + VAT_RATE); // Add VAT
+    }
   };
 
   const handleSave = async () => {
@@ -257,6 +282,8 @@ export default function SalesEntryScreen() {
   }
 
   const total = calculateTotal();
+  const vatAmount = calculateVatAmount();
+  const finalTotal = calculateFinalTotal();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -461,9 +488,42 @@ export default function SalesEntryScreen() {
           <View style={styles.paymentSection}>
             <Text style={styles.sectionTitle}>Payment</Text>
 
+            {/* VAT Toggle */}
+            <View style={styles.vatToggleContainer}>
+              <Text style={styles.vatToggleLabel}>Pricing:</Text>
+              <View style={styles.vatToggleButtons}>
+                <TouchableOpacity
+                  style={[styles.vatToggleButton, includeVat && styles.vatToggleButtonActive]}
+                  onPress={() => setIncludeVat(true)}
+                >
+                  <Text style={[styles.vatToggleButtonText, includeVat && styles.vatToggleButtonTextActive]}>
+                    VAT Inclusive
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.vatToggleButton, !includeVat && styles.vatToggleButtonActive]}
+                  onPress={() => setIncludeVat(false)}
+                >
+                  <Text style={[styles.vatToggleButtonText, !includeVat && styles.vatToggleButtonTextActive]}>
+                    VAT Exclusive
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <View style={styles.totalCard}>
-              <Text style={styles.totalLabel}>Invoice Total</Text>
-              <Text style={styles.totalValue}>R {total.toFixed(2)}</Text>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Subtotal</Text>
+                <Text style={styles.subtotalValue}>R {total.toFixed(2)}</Text>
+              </View>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>VAT (15%)</Text>
+                <Text style={styles.vatValue}>R {vatAmount.toFixed(2)}</Text>
+              </View>
+              <View style={[styles.totalRow, styles.totalRowFinal]}>
+                <Text style={styles.totalLabelFinal}>Invoice Total</Text>
+                <Text style={styles.totalValue}>R {finalTotal.toFixed(2)}</Text>
+              </View>
             </View>
 
             <View style={styles.inputGroup}>
@@ -557,14 +617,14 @@ export default function SalesEntryScreen() {
             </View>
 
             {/* Shortage Display */}
-            {parseFloat(cashCollected || '0') < total && parseFloat(cashCollected || '0') > 0 && (
+            {parseFloat(cashCollected || '0') < finalTotal && parseFloat(cashCollected || '0') > 0 && (
               <View style={styles.shortageCard}>
                 <View style={styles.shortageRow}>
                   <Ionicons name="warning" size={20} color="#F59E0B" />
                   <Text style={styles.shortageLabel}>Shortage Amount</Text>
                 </View>
                 <Text style={styles.shortageValue}>
-                  R {(total - parseFloat(cashCollected || '0')).toFixed(2)}
+                  R {(finalTotal - parseFloat(cashCollected || '0')).toFixed(2)}
                 </Text>
               </View>
             )}
@@ -587,8 +647,8 @@ export default function SalesEntryScreen() {
         {/* Save Button */}
         <View style={styles.footer}>
           <View style={styles.footerTotal}>
-            <Text style={styles.footerTotalLabel}>Total</Text>
-            <Text style={styles.footerTotalValue}>R {total.toFixed(2)}</Text>
+            <Text style={styles.footerTotalLabel}>Total (incl. VAT)</Text>
+            <Text style={styles.footerTotalValue}>R {finalTotal.toFixed(2)}</Text>
           </View>
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
@@ -808,19 +868,76 @@ const styles = StyleSheet.create({
   totalCard: {
     backgroundColor: '#1E3A5F',
     borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
+    padding: 16,
     marginBottom: 16,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  totalRowFinal: {
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+    marginTop: 8,
+    paddingTop: 12,
   },
   totalLabel: {
     fontSize: 14,
     color: '#94A3B8',
   },
-  totalValue: {
-    fontSize: 32,
-    fontWeight: 'bold',
+  totalLabelFinal: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#FFFFFF',
-    marginTop: 4,
+  },
+  subtotalValue: {
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  vatValue: {
+    fontSize: 14,
+    color: '#64748B',
+  },
+  totalValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#10B981',
+  },
+  vatToggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 12,
+  },
+  vatToggleLabel: {
+    fontSize: 14,
+    color: '#94A3B8',
+  },
+  vatToggleButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  vatToggleButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#0F172A',
+  },
+  vatToggleButtonActive: {
+    backgroundColor: '#3B82F6',
+  },
+  vatToggleButtonText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  vatToggleButtonTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   shortageCard: {
     backgroundColor: '#422006',
@@ -1094,15 +1211,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    paddingRight: 4,
   },
   splitPaymentLabel: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    flex: 1,
+    width: 110,
   },
   splitPaymentLabelText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#FFFFFF',
   },
   splitPaymentInput: {
@@ -1111,11 +1229,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F172A',
     borderRadius: 8,
     paddingHorizontal: 12,
-    width: 140,
+    width: 130,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   splitCurrencyPrefix: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#64748B',
+    marginRight: 4,
   },
   splitAmountInput: {
     flex: 1,
