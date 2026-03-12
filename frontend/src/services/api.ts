@@ -166,6 +166,7 @@ class ApiService {
     crates_collected?: number;
     cash_collected: number;
     payment_type?: string;
+    split_payments?: { method: string; amount: number; reference?: string }[];
     notes?: string;
     delivery_status?: string;
   }) {

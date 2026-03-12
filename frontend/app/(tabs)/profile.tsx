@@ -161,18 +161,45 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color="#64748B" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => {
+              Alert.alert(
+                'Help & Support',
+                `Need assistance? Contact us:\n\n` +
+                `📧 Email: supportapp@mzafri.co.za\n` +
+                `📞 Phone: +27 71 876 5600\n` +
+                `🌐 Website: www.mzafri.co.za\n\n` +
+                `Our support team is available Monday to Friday, 8am - 5pm.`,
+                [{ text: 'OK' }]
+              );
+            }}
+          >
             <View style={[styles.menuIcon, { backgroundColor: '#2E1E3B' }]}>
               <Ionicons name="help-circle-outline" size={20} color="#8B5CF6" />
             </View>
             <View style={styles.menuContent}>
               <Text style={styles.menuTitle}>Help & Support</Text>
-              <Text style={styles.menuSubtitle}>Get assistance</Text>
+              <Text style={styles.menuSubtitle}>supportapp@mzafri.co.za</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#64748B" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => {
+              Alert.alert(
+                'About Mzansi Distribution Tracker',
+                `Version 1.0.0\n\n` +
+                `Developed for Mzafri Distribution\n\n` +
+                `📧 supportapp@mzafri.co.za\n` +
+                `📞 +27 71 876 5600\n` +
+                `🌐 www.mzafri.co.za\n\n` +
+                `© 2026 Mzafri Distribution. All rights reserved.`,
+                [{ text: 'OK' }]
+              );
+            }}
+          >
             <View style={[styles.menuIcon, { backgroundColor: '#1E293B' }]}>
               <Ionicons name="information-circle-outline" size={20} color="#94A3B8" />
             </View>
@@ -182,6 +209,23 @@ export default function ProfileScreen() {
             </View>
             <Ionicons name="chevron-forward" size={20} color="#64748B" />
           </TouchableOpacity>
+        </View>
+
+        {/* Support Contact Card */}
+        <View style={styles.supportCard}>
+          <Text style={styles.supportTitle}>Need Help?</Text>
+          <View style={styles.supportRow}>
+            <Ionicons name="mail" size={16} color="#3B82F6" />
+            <Text style={styles.supportText}>supportapp@mzafri.co.za</Text>
+          </View>
+          <View style={styles.supportRow}>
+            <Ionicons name="call" size={16} color="#10B981" />
+            <Text style={styles.supportText}>+27 71 876 5600</Text>
+          </View>
+          <View style={styles.supportRow}>
+            <Ionicons name="globe" size={16} color="#F59E0B" />
+            <Text style={styles.supportText}>www.mzafri.co.za</Text>
+          </View>
         </View>
 
         {/* Logout Button */}
@@ -312,6 +356,31 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#EF4444',
     marginLeft: 8,
+  },
+  supportCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  supportTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  supportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  supportText: {
+    fontSize: 14,
+    color: '#94A3B8',
   },
   appInfo: {
     alignItems: 'center',

@@ -10,6 +10,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -33,6 +34,19 @@ interface SaleItem {
   unit_price: number;
 }
 
+interface SplitPayment {
+  method: string;
+  amount: string;
+  reference: string;
+}
+
+const PAYMENT_METHODS = [
+  { id: 'cash', name: 'Cash', icon: 'cash-outline' },
+  { id: 'eft', name: 'EFT', icon: 'card-outline' },
+  { id: 'shop2shop', name: 'Shop2Shop', icon: 'storefront-outline' },
+  { id: 'kazang', name: 'Kazang', icon: 'phone-portrait-outline' },
+];
+
 export default function SalesEntryScreen() {
   const router = useRouter();
   const { customerId, name } = useLocalSearchParams<{ customerId: string; name: string }>();
@@ -43,6 +57,8 @@ export default function SalesEntryScreen() {
   const [cratesCollected, setCratesCollected] = useState('');
   const [cashCollected, setCashCollected] = useState('');
   const [paymentType, setPaymentType] = useState('cash');
+  const [splitPayments, setSplitPayments] = useState<SplitPayment[]>([]);
+  const [showSplitModal, setShowSplitModal] = useState(false);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -131,8 +147,8 @@ export default function SalesEntryScreen() {
       return;
     }
 
-    if (!cashCollected) {
-      Alert.alert('Error', 'Please enter cash received amount');
+    if (!cashCollected || parseFloat(cashCollected) <= 0) {
+      Alert.alert('Error', 'Please enter payment amount');
       return;
     }
 
@@ -143,6 +159,15 @@ export default function SalesEntryScreen() {
 
     setSaving(true);
     try {
+      // Prepare split payments data
+      const splitPaymentsData = paymentType === 'split' && splitPayments.length > 0
+        ? splitPayments.map(sp => ({
+            method: sp.method,
+            amount: parseFloat(sp.amount),
+            reference: sp.reference || ''
+          }))
+        : undefined;
+
       const result = await api.createSale({
         route_id: activeRoute.route_id,
         customer_id: customerId || '',
@@ -152,6 +177,7 @@ export default function SalesEntryScreen() {
         crates_collected: parseInt(cratesCollected) || 0,
         cash_collected: parseFloat(cashCollected),
         payment_type: paymentType,
+        split_payments: splitPaymentsData,
         notes: notes || undefined,
       });
       
@@ -162,19 +188,44 @@ export default function SalesEntryScreen() {
       }, 0);
       const cashReceived = parseFloat(cashCollected);
       const shortageAmount = result.shortage_amount || Math.max(0, invoiceTotal - cashReceived);
+      const cratesNet = (parseInt(cratesDropped) || 0) - (parseInt(cratesCollected) || 0);
       
       // Show detailed success with invoice number prominently displayed
-      const title = `✅ SALE RECORDED\n\n📄 ${invoiceNumber}`;
-      let message = `Customer: ${customerName}\n\n`;
-      message += `━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `Invoice Total:    R ${invoiceTotal.toFixed(2)}\n`;
-      message += `Cash Received:  R ${cashReceived.toFixed(2)}\n`;
-      if (shortageAmount > 0) {
-        message += `━━━━━━━━━━━━━━━━━━━━\n`;
-        message += `⚠️ SHORTAGE:      R ${shortageAmount.toFixed(2)}\n`;
+      const title = `✅ SALE RECORDED`;
+      let message = `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `📄 INVOICE: ${invoiceNumber}\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      message += `👤 Customer: ${customerName}\n`;
+      message += `🚗 Route: ${activeRoute.route_name}\n`;
+      message += `📅 Date: ${new Date().toLocaleDateString()}\n`;
+      message += `🕐 Time: ${new Date().toLocaleTimeString()}\n\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `💰 Invoice Total:    R ${invoiceTotal.toFixed(2)}\n`;
+      
+      // Show payment breakdown
+      if (paymentType === 'split' && splitPayments.length > 0) {
+        message += `\n💳 Payment Split:\n`;
+        splitPayments.forEach(sp => {
+          const methodName = PAYMENT_METHODS.find(m => m.id === sp.method)?.name || sp.method;
+          message += `   • ${methodName}: R ${parseFloat(sp.amount).toFixed(2)}\n`;
+        });
+      } else {
+        const methodName = PAYMENT_METHODS.find(m => m.id === paymentType)?.name || paymentType;
+        message += `💳 Payment (${methodName}): R ${cashReceived.toFixed(2)}\n`;
       }
-      message += `━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `\nInvoice #: ${invoiceNumber}`;
+      
+      if (shortageAmount > 0) {
+        message += `\n⚠️ SHORTAGE: R ${shortageAmount.toFixed(2)}\n`;
+      }
+      
+      // Crates info
+      if (parseInt(cratesDropped) > 0 || parseInt(cratesCollected) > 0) {
+        message += `\n📦 Crates Dropped: ${cratesDropped || 0}\n`;
+        message += `📦 Crates Collected: ${cratesCollected || 0}\n`;
+        message += `📦 Net with Customer: ${cratesNet}\n`;
+      }
+      
+      message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
       
       Alert.alert(title, message, [
         { text: 'Done', onPress: () => router.back() },
@@ -416,7 +467,78 @@ export default function SalesEntryScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputGroupLabel}>Cash Received *</Text>
+              <Text style={styles.inputGroupLabel}>Payment Method</Text>
+              <View style={styles.paymentTypes}>
+                {PAYMENT_METHODS.map((method) => (
+                  <TouchableOpacity
+                    key={method.id}
+                    style={[
+                      styles.paymentTypeButton,
+                      paymentType === method.id && styles.paymentTypeButtonActive,
+                    ]}
+                    onPress={() => {
+                      setPaymentType(method.id);
+                      setSplitPayments([]);
+                    }}
+                  >
+                    <Ionicons
+                      name={method.icon as any}
+                      size={18}
+                      color={paymentType === method.id ? '#FFFFFF' : '#64748B'}
+                    />
+                    <Text
+                      style={[
+                        styles.paymentTypeText,
+                        paymentType === method.id && styles.paymentTypeTextActive,
+                      ]}
+                    >
+                      {method.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              
+              {/* Split Payment Button */}
+              <TouchableOpacity
+                style={[
+                  styles.splitButton,
+                  paymentType === 'split' && styles.splitButtonActive
+                ]}
+                onPress={() => {
+                  setPaymentType('split');
+                  setShowSplitModal(true);
+                }}
+              >
+                <Ionicons name="git-branch-outline" size={18} color={paymentType === 'split' ? '#FFFFFF' : '#3B82F6'} />
+                <Text style={[styles.splitButtonText, paymentType === 'split' && { color: '#FFFFFF' }]}>
+                  Split Payment
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Split Payment Summary */}
+            {paymentType === 'split' && splitPayments.length > 0 && (
+              <View style={styles.splitSummary}>
+                <Text style={styles.splitSummaryTitle}>Split Payments:</Text>
+                {splitPayments.map((sp, idx) => (
+                  <View key={idx} style={styles.splitItem}>
+                    <Text style={styles.splitItemMethod}>
+                      {PAYMENT_METHODS.find(m => m.id === sp.method)?.name || sp.method}
+                    </Text>
+                    <Text style={styles.splitItemAmount}>R {parseFloat(sp.amount || '0').toFixed(2)}</Text>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={styles.editSplitButton}
+                  onPress={() => setShowSplitModal(true)}
+                >
+                  <Text style={styles.editSplitButtonText}>Edit Split</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputGroupLabel}>Total Received *</Text>
               <View style={styles.cashInputContainer}>
                 <Text style={styles.currencyPrefix}>R</Text>
                 <TextInput
@@ -426,8 +548,12 @@ export default function SalesEntryScreen() {
                   value={cashCollected}
                   onChangeText={setCashCollected}
                   keyboardType="numeric"
+                  editable={paymentType !== 'split'}
                 />
               </View>
+              {paymentType === 'split' && (
+                <Text style={styles.splitNote}>Auto-calculated from split payments</Text>
+              )}
             </View>
 
             {/* Shortage Display */}
@@ -442,42 +568,6 @@ export default function SalesEntryScreen() {
                 </Text>
               </View>
             )}
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputGroupLabel}>Payment Type</Text>
-              <View style={styles.paymentTypes}>
-                {['cash', 'card', 'mobile'].map((type) => (
-                  <TouchableOpacity
-                    key={type}
-                    style={[
-                      styles.paymentTypeButton,
-                      paymentType === type && styles.paymentTypeButtonActive,
-                    ]}
-                    onPress={() => setPaymentType(type)}
-                  >
-                    <Ionicons
-                      name={
-                        type === 'cash'
-                          ? 'cash-outline'
-                          : type === 'card'
-                          ? 'card-outline'
-                          : 'phone-portrait-outline'
-                      }
-                      size={20}
-                      color={paymentType === type ? '#FFFFFF' : '#64748B'}
-                    />
-                    <Text
-                      style={[
-                        styles.paymentTypeText,
-                        paymentType === type && styles.paymentTypeTextActive,
-                      ]}
-                    >
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputGroupLabel}>Notes (Optional)</Text>
@@ -515,6 +605,79 @@ export default function SalesEntryScreen() {
             )}
           </TouchableOpacity>
         </View>
+
+        {/* Split Payment Modal */}
+        <Modal visible={showSplitModal} animationType="slide" transparent>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Split Payment</Text>
+                <TouchableOpacity onPress={() => setShowSplitModal(false)}>
+                  <Ionicons name="close" size={24} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={styles.modalSubtitle}>
+                Invoice Total: R {total.toFixed(2)}
+              </Text>
+              
+              {PAYMENT_METHODS.map((method) => {
+                const existing = splitPayments.find(sp => sp.method === method.id);
+                return (
+                  <View key={method.id} style={styles.splitPaymentRow}>
+                    <View style={styles.splitPaymentLabel}>
+                      <Ionicons name={method.icon as any} size={20} color="#94A3B8" />
+                      <Text style={styles.splitPaymentLabelText}>{method.name}</Text>
+                    </View>
+                    <View style={styles.splitPaymentInput}>
+                      <Text style={styles.splitCurrencyPrefix}>R</Text>
+                      <TextInput
+                        style={styles.splitAmountInput}
+                        placeholder="0.00"
+                        placeholderTextColor="#64748B"
+                        keyboardType="numeric"
+                        value={existing?.amount || ''}
+                        onChangeText={(text) => {
+                          const updated = splitPayments.filter(sp => sp.method !== method.id);
+                          if (text && parseFloat(text) > 0) {
+                            updated.push({ method: method.id, amount: text, reference: '' });
+                          }
+                          setSplitPayments(updated);
+                          // Update total
+                          const newTotal = updated.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0);
+                          setCashCollected(newTotal.toFixed(2));
+                        }}
+                      />
+                    </View>
+                  </View>
+                );
+              })}
+              
+              <View style={styles.splitTotalRow}>
+                <Text style={styles.splitTotalLabel}>Total Received:</Text>
+                <Text style={styles.splitTotalValue}>
+                  R {splitPayments.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0).toFixed(2)}
+                </Text>
+              </View>
+              
+              {splitPayments.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0) < total && (
+                <View style={styles.splitShortageRow}>
+                  <Text style={styles.splitShortageLabel}>Shortage:</Text>
+                  <Text style={styles.splitShortageValue}>
+                    R {(total - splitPayments.reduce((sum, sp) => sum + parseFloat(sp.amount || '0'), 0)).toFixed(2)}
+                  </Text>
+                </View>
+              )}
+              
+              <TouchableOpacity
+                style={styles.splitDoneButton}
+                onPress={() => setShowSplitModal(false)}
+              >
+                <Text style={styles.splitDoneButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -834,5 +997,175 @@ const styles = StyleSheet.create({
   cratesNetValue: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  splitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E3A5F',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+  },
+  splitButtonActive: {
+    backgroundColor: '#3B82F6',
+  },
+  splitButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
+  splitSummary: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  splitSummaryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  splitItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  splitItemMethod: {
+    fontSize: 14,
+    color: '#94A3B8',
+  },
+  splitItemAmount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#10B981',
+  },
+  editSplitButton: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  editSplitButtonText: {
+    fontSize: 14,
+    color: '#3B82F6',
+  },
+  splitNote: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#1E293B',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: '#10B981',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  splitPaymentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  splitPaymentLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  splitPaymentLabelText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  splitPaymentInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    width: 140,
+  },
+  splitCurrencyPrefix: {
+    fontSize: 16,
+    color: '#64748B',
+  },
+  splitAmountInput: {
+    flex: 1,
+    height: 44,
+    fontSize: 16,
+    color: '#FFFFFF',
+    textAlign: 'right',
+  },
+  splitTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+    paddingTop: 16,
+    marginTop: 8,
+  },
+  splitTotalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  splitTotalValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  splitShortageRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  splitShortageLabel: {
+    fontSize: 14,
+    color: '#F59E0B',
+  },
+  splitShortageValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#F59E0B',
+  },
+  splitDoneButton: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  splitDoneButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

@@ -210,6 +210,11 @@ class SaleItemCreate(BaseModel):
     damages: int = 0
     unit_price: float
 
+class SplitPayment(BaseModel):
+    method: str  # cash, eft, shop2shop, kazang
+    amount: float
+    reference: Optional[str] = None  # Reference number for EFT/Shop2Shop/Kazang
+
 class SaleCreate(BaseModel):
     route_id: str
     customer_id: str
@@ -217,8 +222,9 @@ class SaleCreate(BaseModel):
     items: List[SaleItemCreate]
     crates_dropped: int = 0  # Crates left with customer
     crates_collected: int = 0  # Crates collected back (empties)
-    cash_collected: float
-    payment_type: str = "cash"  # cash, card, mobile
+    cash_collected: float  # Total collected (sum of all payment methods)
+    payment_type: str = "cash"  # Primary payment type: cash, eft, shop2shop, kazang, split
+    split_payments: Optional[List[SplitPayment]] = None  # For split payments
     notes: Optional[str] = None
     delivery_status: str = "delivered"  # delivered, partial, skipped
 
@@ -226,14 +232,16 @@ class SaleUpdate(BaseModel):
     items: Optional[List[SaleItemCreate]] = None
     cash_collected: Optional[float] = None
     payment_type: Optional[str] = None
+    split_payments: Optional[List[SplitPayment]] = None
     notes: Optional[str] = None
     delivery_status: Optional[str] = None
     void_reason: Optional[str] = None
 
 class SaleResponse(BaseModel):
     id: str
-    invoice_number: Optional[str] = None  # Auto-generated invoice number
+    invoice_number: Optional[str] = None
     route_id: str
+    route_name: Optional[str] = None
     customer_id: str
     customer_name: str
     driver_id: str
@@ -241,10 +249,11 @@ class SaleResponse(BaseModel):
     items: List[dict]
     total_amount: float
     cash_collected: float
-    shortage_amount: float = 0  # Invoice Total - Cash Collected
+    shortage_amount: float = 0
     crates_dropped: int = 0
     crates_collected: int = 0
     payment_type: str
+    split_payments: Optional[List[dict]] = None
     delivery_status: str = "delivered"
     notes: Optional[str]
     is_voided: bool = False
@@ -904,6 +913,7 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
     sale_doc = {
         "invoice_number": invoice_number,
         "route_id": sale.route_id,
+        "route_name": route["name"] if route else "Unknown",
         "customer_id": sale.customer_id,
         "customer_name": sale.customer_name,
         "driver_id": current_user["id"],
@@ -915,6 +925,7 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
         "cash_collected": sale.cash_collected,
         "shortage_amount": shortage_amount,
         "payment_type": sale.payment_type,
+        "split_payments": [sp.dict() for sp in sale.split_payments] if sale.split_payments else None,
         "delivery_status": sale.delivery_status,
         "notes": sale.notes,
         "is_voided": False,
@@ -2942,6 +2953,41 @@ async def send_report_email(
         "message": f"Report sent to {sent_count} recipients",
         "sent": sent_count,
         "failed": failed
+    }
+
+# ==================== CLEAR DATA ====================
+
+@api_router.post("/admin/clear-data")
+async def clear_all_data(current_user: dict = Depends(get_current_user)):
+    """Clear all practice/demo data - Admin only"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Clear transactional data only (keep users, products, routes, customers)
+    await db.sales.delete_many({})
+    await db.daily_routes.delete_many({})
+    await db.stock_movements.delete_many({})
+    await db.stock.delete_many({})
+    await db.crates_tracking.delete_many({})
+    await db.email_logs.delete_many({})
+    
+    return {
+        "message": "All practice data cleared successfully",
+        "cleared": ["sales", "daily_routes", "stock_movements", "stock", "crates_tracking", "email_logs"]
+    }
+
+# ==================== SUPPORT INFO ====================
+
+@api_router.get("/support-info")
+async def get_support_info():
+    """Get app support and contact information"""
+    return {
+        "company": "Mzafri Distribution",
+        "website": "www.mzafri.co.za",
+        "support_email": "supportapp@mzafri.co.za",
+        "contact_number": "+27 71 876 5600",
+        "app_name": "Mzansi Distribution Tracker",
+        "version": "1.0.0"
     }
 
 # ==================== HEALTH CHECK ====================
