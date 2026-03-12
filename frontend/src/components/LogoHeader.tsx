@@ -8,21 +8,21 @@ interface LogoHeaderProps {
 
 export function LogoHeader({ showText = true, size = 'medium' }: LogoHeaderProps) {
   const logoSize = size === 'small' ? 32 : size === 'medium' ? 48 : 64;
+  const borderRadius = size === 'small' ? 8 : size === 'medium' ? 12 : 16;
   
   return (
     <View style={styles.container}>
-      <Image
-        source={require('../../assets/logo.png')}
-        style={[styles.logo, { width: logoSize, height: logoSize }]}
-        resizeMode="contain"
-      />
+      <View style={[styles.logoWrapper, { width: logoSize, height: logoSize, borderRadius }]}>
+        <Image
+          source={require('../../assets/icon.png')}
+          style={[styles.logo, { width: logoSize, height: logoSize, borderRadius }]}
+          resizeMode="cover"
+        />
+      </View>
       {showText && (
         <View style={styles.textContainer}>
           <Text style={[styles.title, size === 'small' && styles.titleSmall]}>
-            Mzansi Distribution
-          </Text>
-          <Text style={[styles.subtitle, size === 'small' && styles.subtitleSmall]}>
-            Tracker
+            Mzansi Distribution Tracker
           </Text>
         </View>
       )}
@@ -37,7 +37,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   logo: {
-    borderRadius: 8,
+    borderRadius: 12,
+  },
+  logoWrapper: {
+    overflow: 'hidden',
+    backgroundColor: '#1E293B',
   },
   textContainer: {
     justifyContent: 'center',

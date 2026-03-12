@@ -104,13 +104,14 @@ export default function LoginScreen() {
         >
           {/* Header */}
           <View style={styles.header}>
-            <Image
-              source={require('../../assets/logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-            <Text style={styles.tagline}>UMOJA NI NGUVU</Text>
-            <Text style={styles.subtitle}>Distribution Tracker</Text>
+            <View style={styles.logoContainer}>
+              <Image
+                source={require('../../assets/icon.png')}
+                style={styles.logo}
+                resizeMode="cover"
+              />
+            </View>
+            <Text style={styles.appName}>Mzansi Distribution Tracker</Text>
           </View>
 
           {/* Form */}
@@ -236,20 +237,23 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   logo: {
-    width: 180,
-    height: 130,
-    marginBottom: 8,
+    width: 120,
+    height: 120,
+    borderRadius: 30,
   },
-  tagline: {
-    fontSize: 12,
-    color: '#4A9B8C',
-    letterSpacing: 3,
-    marginTop: 4,
+  logoContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 30,
+    overflow: 'hidden',
+    marginBottom: 16,
+    backgroundColor: '#1E293B',
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#94A3B8',
-    marginTop: 8,
+  appName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   form: {
     backgroundColor: '#1E293B',
