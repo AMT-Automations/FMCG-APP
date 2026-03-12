@@ -362,6 +362,7 @@ class DailyRouteResponse(BaseModel):
     total_collected: float
     total_expected: float = 0  # Total invoice amounts
     total_shortage: float = 0  # Total shortages (Expected - Collected)
+    vehicle_check: Optional[Dict[str, Any]] = None  # Vehicle inspection data
 
 # ==================== AUTH HELPERS ====================
 
@@ -1374,7 +1375,17 @@ async def get_daily_summary(date_str: Optional[str] = None, current_user: dict =
         "total_km_traveled": total_km,
         "product_breakdown": product_totals,
         "delivery_status": delivery_status,
-        "daily_routes": [str_id(dr) for dr in daily_routes]
+        "daily_routes": [str_id(dr) for dr in daily_routes],
+        "vehicle_inspections": [
+            {
+                "route_name": dr.get("route_name", ""),
+                "vehicle_name": dr.get("vehicle_name", ""),
+                "vehicle_registration": dr.get("vehicle_registration", ""),
+                "driver_name": dr.get("driver_name", ""),
+                "inspection": dr.get("vehicle_check", {}),
+            }
+            for dr in daily_routes if dr.get("vehicle_check")
+        ]
     }
 
 @api_router.get("/reports/route-performance/{route_id}")
@@ -1834,6 +1845,81 @@ async def export_route_report_excel(
         products_sheet.write(total_row, 5, grand_delivered - grand_returned, header_green)
         products_sheet.write(total_row, 6, grand_revenue, money_bold)
     
+    # ==================== VEHICLE INSPECTION SHEET ====================
+    insp_sheet = workbook.add_worksheet('🔍 Vehicle Inspection')
+    insp_sheet.set_tab_color('#EF4444')
+    insp_sheet.hide_gridlines(2)
+    
+    insp_sheet.set_column('A:A', 22)  # Category / Route
+    insp_sheet.set_column('B:B', 18)  # Vehicle
+    insp_sheet.set_column('C:C', 18)  # Driver
+    insp_sheet.set_column('D:D', 35)  # Item
+    insp_sheet.set_column('E:E', 10)  # Status
+    insp_sheet.set_column('F:F', 40)  # Comment
+    
+    insp_sheet.set_row(0, 30)
+    insp_sheet.merge_range('A1:F1', f'🔍 Vehicle Inspection Report - {date_str}', title_format)
+    
+    insp_headers = ['Route / Category', 'Vehicle', 'Driver', 'Inspection Item', 'Status', 'Comments']
+    for col, header in enumerate(insp_headers):
+        insp_sheet.write(2, col, header, header_format)
+    
+    insp_sheet.freeze_panes(3, 0)
+    
+    insp_row = 3
+    for dr in daily_routes:
+        vc = dr.get("vehicle_check") or {}
+        if not vc:
+            continue
+        
+        route_name = dr.get("route_name", "")
+        vehicle_info = f"{dr.get('vehicle_name', 'N/A')} ({dr.get('vehicle_registration', '')})"
+        driver_name = dr.get("driver_name", "")
+        
+        # Summary row
+        summary = vc.get("summary", {})
+        pass_rate = summary.get("pass_rate", 0)
+        total_items = summary.get("total_items", 0)
+        passed_count = summary.get("passed", 0)
+        failed_count = summary.get("failed", 0)
+        
+        summary_text = f"Pass Rate: {pass_rate}% ({passed_count}/{total_items})"
+        if failed_count > 0:
+            summary_text += f" - {failed_count} FAILED"
+        
+        insp_sheet.write(insp_row, 0, route_name, header_format)
+        insp_sheet.write(insp_row, 1, vehicle_info, header_format)
+        insp_sheet.write(insp_row, 2, driver_name, header_format)
+        insp_sheet.write(insp_row, 3, summary_text, header_format)
+        insp_sheet.write(insp_row, 4, f"{pass_rate}%", header_green if pass_rate >= 80 else header_orange)
+        insp_sheet.write(insp_row, 5, vc.get("overall_notes", "") or "", cell_wrap)
+        insp_row += 1
+        
+        # Category details
+        categories = vc.get("categories", {})
+        for cat_id, cat_data in categories.items():
+            cat_title = cat_data.get("title", cat_id)
+            for item in cat_data.get("items", []):
+                status = item.get("passed")
+                status_text = "✓ PASS" if status is True else ("✗ FAIL" if status is False else "—")
+                status_fmt = status_delivered if status is True else (status_pending if status is False else cell_center)
+                comment = item.get("comment") or ""
+                
+                insp_sheet.write(insp_row, 0, cat_title, cell_format)
+                insp_sheet.write(insp_row, 1, "", cell_format)
+                insp_sheet.write(insp_row, 2, "", cell_format)
+                insp_sheet.write(insp_row, 3, item.get("label", ""), cell_format)
+                insp_sheet.write(insp_row, 4, status_text, status_fmt)
+                insp_sheet.write(insp_row, 5, comment, cell_wrap)
+                insp_row += 1
+        
+        # Blank separator row
+        insp_row += 1
+    
+    # If no inspections
+    if insp_row == 3:
+        insp_sheet.write(3, 0, "No vehicle inspections recorded for this date", cell_format)
+
     # Set Dashboard as the active sheet
     dashboard.activate()
     
