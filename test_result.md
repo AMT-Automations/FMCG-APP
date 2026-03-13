@@ -483,6 +483,54 @@ backend:
         agent: "testing"
         comment: "✅ ENHANCED VEHICLE INSPECTION FEATURE TESTING COMPLETE - Comprehensive testing of enhanced vehicle inspection feature completed with 100% success rate (3/3 tests passed). TESTED FEATURES AS PER REVIEW REQUEST: 1) ✅ START DAILY ROUTE WITH VEHICLE INSPECTION - POST /api/daily-routes/start accepts full vehicle_check data structure with inspection_date, summary (total_items: 30, passed: 25, failed: 3, unchecked: 2, pass_rate: 83%), categories (exterior, tires with individual item details), overall_notes, and failed_items array. Vehicle inspection data correctly stored and returned in response. 2) ✅ DAILY SUMMARY INCLUDES INSPECTION DATA - GET /api/reports/daily-summary returns vehicle_inspections array with complete inspection details including route_name, vehicle_name, vehicle_registration, driver_name, and full inspection data with pass rates and failed items. Multiple vehicle inspections properly tracked (tested with 2 different routes: Soweto North with Truck 2 and Soweto South with Van A). 3) ✅ EXCEL EXPORT WITH INSPECTION SHEET - GET /api/reports/export/excel generates valid Excel files (11,436 bytes) with proper content-type and includes Vehicle Inspection sheet containing detailed inspection data, pass rates, failed items, and comments. All features working exactly as specified in review request with no critical issues found."
 
+  - task: "REVIEW REQUEST: Company Setup (Multi-tenancy)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ COMPANY SETUP MULTI-TENANCY WORKING PERFECTLY - POST /api/companies/setup endpoint fully functional with exact review request data. Features verified: 1) Company registration with provided data (Test Distribution Co, John Test contact, 0111234567 phone, test@test.co.za email, 123 Test Street address), 2) Admin user creation (John Admin, 0991112222 phone, 5678 PIN), 3) Response returns company_id (69b3b04abafc5c28c2490cb5) and company_name (Test Distribution Co) as required, 4) Proper database storage with company_id linking to admin user. Multi-tenancy company setup ready for production."
+
+  - task: "REVIEW REQUEST: Login with Company Context"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ LOGIN WITH COMPANY CONTEXT WORKING PERFECTLY - POST /api/auth/login endpoint returns company field in response when user has company association. Features verified: 1) Login with new admin credentials (0991112222/5678) successful, 2) JWT token generated correctly, 3) User details returned (John Admin, admin role), 4) CRITICAL: Company field present in response with company name (Test Distribution Co) and company ID as required by review request, 5) Complete authentication flow working for multi-tenant environment. Company-aware login ready for production."
+
+  - task: "REVIEW REQUEST: Excel Export with Authentication"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ EXCEL EXPORT WITH AUTHENTICATION WORKING PERFECTLY - GET /api/reports/export/excel endpoint fully functional with authorization header. Features verified: 1) Returns 200 status code as required, 2) Proper xlsx content-type (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet), 3) Excel file generated successfully (9,496 bytes), 4) Authorization header validation working correctly, 5) Admin login token accepted for export functionality. Excel report export ready for production use."
+
+  - task: "REVIEW REQUEST: PDF Export with Authentication"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PDF EXPORT WITH AUTHENTICATION WORKING PERFECTLY - GET /api/reports/export/pdf endpoint fully functional with authorization header. Features verified: 1) Returns 200 status code as required, 2) Proper pdf content-type (application/pdf), 3) PDF file generated successfully (2,162 bytes), 4) Valid PDF format confirmed with %PDF header, 5) Authorization header validation working correctly, 6) Admin login token accepted for export functionality. PDF report export ready for production use."
+
 frontend:
   - task: "Login Screen with PIN"
     implemented: true
@@ -615,6 +663,8 @@ agent_communication:
     message: "NEW FEATURES IMPLEMENTED: 1) AUTOMATIC INVOICE NUMBER - Sales now generate unique invoice numbers (INV-YYYYMMDD-ROUTE-####), tested via curl showing INV-20260310-SOWE-0001. 2) CASH SHORTAGE TRACKING - Backend calculates shortage_amount = total_amount - cash_collected, daily route totals now include total_expected and total_shortage fields. 3) UI FIX - Sales screen quantity input box sizing reduced to prevent overflow. 4) EMAIL SSL SUPPORT - Updated SMTP to support both SSL (port 465) and TLS (port 587). Frontend shows live shortage calculation and displays invoice number in success alert. All backend changes tested via curl - working correctly."
   - agent: "testing"
     message: "✅ NEW FEATURES COMPREHENSIVE TESTING COMPLETE - All 3 NEW features tested and verified working perfectly. TESTED FEATURES: 1) AUTOMATIC INVOICE NUMBER GENERATION - Format INV-YYYYMMDD-ROUTE-#### working correctly (verified INV-20260310-SOWE-0001, INV-20260310-SOWE-0002, INV-20260310-SOWE-0003), sequence increments properly, route code extraction from route name working. 2) CASH SHORTAGE TRACKING - Shortage calculation = total_amount - cash_collected working perfectly (tested R30 shortage from R180 invoice with R150 cash, R20 shortage from R160 invoice with R140 cash). 3) DAILY ROUTE ACCUMULATION - Route totals accumulating correctly (total_expected R520, total_collected R440, total_shortage R80, sales_count 3), all calculations match individual sale totals. Backend NEW features ready for production - 100% success rate. Test data: 3 sales created with proper invoice numbers, shortage tracking, and route total updates."
+  - agent: "main"
+    message: "BATCH UPDATE: 1) Fixed Quick Actions grid to use flexWrap with 3-per-row layout. 2) Fixed PDF/Excel downloads with expo-file-system and expo-sharing for mobile, blob download for web. 3) Added Company model and /api/companies/setup endpoint for multi-tenancy. 4) Created company-setup.tsx onboarding screen. 5) Added 'Register a New Company' link on login page. Please test: POST /api/companies/setup, GET /api/reports/export/excel, GET /api/reports/export/pdf"
   - agent: "testing"
     message: "✅ STOCK MANAGEMENT MODULE COMPREHENSIVE TESTING COMPLETE - All NEW stock management features tested successfully with 100% success rate (24/24 tests passed). COMPREHENSIVE TESTING RESULTS: 1) STOCK MANAGEMENT MODULE (7 endpoints) - POST /api/stock/seed (✅ seeded 9 products), GET /api/stock/levels (✅ retrieved levels with proper structure), POST /api/stock/receive (✅ received 100 White Bread from supplier), POST /api/stock/adjustment (✅ adjusted -10 for damages), POST /api/stock/take (✅ recorded variance -5 units), GET /api/stock/movements (✅ retrieved 5 movements), GET /api/stock/report (✅ generated weekly report). 2) COMPLETE FLOW TEST (8/8 steps) - Admin login ✅, Stock seed ✅, Receive 100 White Bread ✅, Adjust -10 damages ✅, Stock take ✅, Stock report ✅, Driver login ✅, Invoice/shortage verification ✅. 3) INTEGRATION VERIFICATION - Invoice generation (INV-20260310-SOWE-0006 format correct), Cash shortage calculation (R90 total - R72 cash = R18 shortage), Route totals (R610 expected, R512 collected, R98 shortage). ALL STOCK MANAGEMENT FEATURES PRODUCTION-READY with proper authentication, validation, audit trails, and reporting. Backend API testing 100% successful - NO CRITICAL ISSUES FOUND."
   - agent: "testing"
@@ -632,3 +682,5 @@ agent_communication:
     message: "✅ VAT & INVOICE TESTING COMPLETE - Comprehensive testing of VAT and invoice functionality as specified in review request completed with 100% success rate (3/3 tests passed). TESTED FEATURES: 1) ✅ PRODUCTS API WITH VAT_APPLICABLE FIELD - GET /api/products returns vat_applicable boolean for all 9 products (all have vat_applicable=true as expected for default products), 2) ✅ SALES API WITH INVOICE NUMBER - POST /api/sales returns invoice_number (INV-20260312-SOWE-0005), shortage_amount (R60.0 calculated correctly as R180 total - R120 cash), and total_amount (R180.0) all working perfectly, 3) ✅ SALES LISTING WITH INVOICE NUMBERS - GET /api/sales returns all sales with invoice_number field visible and populated. Complete end-to-end testing flow verified: Admin login → Product VAT fields → Route start → Sale creation with automatic invoice generation and shortage calculation → Sales listing with invoice visibility. ALL CRITICAL VAT AND INVOICE FEATURES ARE PRODUCTION-READY and working exactly according to review request specifications."
   - agent: "testing"
     message: "✅ ENHANCED VEHICLE INSPECTION FEATURE TESTING COMPLETE - Comprehensive testing of enhanced vehicle inspection feature completed with 100% success rate (3/3 tests passed) as per review request. TESTED SCENARIOS: 1) ✅ START ROUTE WITH FULL VEHICLE INSPECTION (Soweto North + Truck 2) - POST /api/daily-routes/start successfully accepts complete vehicle_check data with inspection_date, summary (30 items, 25 passed, 3 failed, 2 unchecked, 83% pass rate), categories (exterior: windscreen failed 'Small chip on driver side', tires: spare tire missing), overall_notes, failed_items array. All inspection data correctly stored and returned in response. 2) ✅ START ROUTE WITH DIFFERENT VEHICLE INSPECTION (Soweto South + Van A) - Successfully tested alternative route scenario with different vehicle inspection (28 passed, 1 failed, 93% pass rate, oil level low). Multiple concurrent routes with inspections working perfectly. 3) ✅ DAILY SUMMARY INCLUDES VEHICLE INSPECTIONS - GET /api/reports/daily-summary returns vehicle_inspections array with 2 inspection entries, each containing route_name, vehicle_name, vehicle_registration, driver_name, and complete inspection details including pass rates, failed items, and comments. 4) ✅ EXCEL EXPORT WITH INSPECTION SHEET - GET /api/reports/export/excel generates valid Excel files (11,436 bytes) with correct content-type and includes comprehensive Vehicle Inspection sheet. ALL ENHANCED VEHICLE INSPECTION FEATURES WORKING EXACTLY AS SPECIFIED IN REVIEW REQUEST with no critical issues found. Backend fully supports complex inspection data structures and reporting requirements."
+  - agent: "testing"
+    message: "✅ REVIEW REQUEST SPECIFIC FEATURES TESTING COMPLETE - Comprehensive testing of 4 specific features mentioned in review request completed with 100% success rate (5/5 tests passed). TESTED FEATURES AS REQUESTED: 1) ✅ SEED DATA FIRST - POST /api/seed-all executed successfully (200 status), data properly seeded as prerequisite, 2) ✅ COMPANY SETUP (MULTI-TENANCY) - POST /api/companies/setup with exact provided data (Test Distribution Co, John Test, John Admin, 0991112222, 5678) worked perfectly, returns company_id (69b3b04abafc5c28c2490cb5) and company_name (Test Distribution Co) as required verification criteria, 3) ✅ LOGIN WITH COMPANY - POST /api/auth/login with new admin credentials (0991112222/5678) successful, response includes 'company' field with company name (Test Distribution Co) and company ID as required verification, user role confirmed as 'admin', JWT token generated correctly, 4) ✅ EXCEL EXPORT - GET /api/reports/export/excel with Authorization header returns 200 status with proper xlsx content-type (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet), Excel file generated (9,496 bytes), 5) ✅ PDF EXPORT - GET /api/reports/export/pdf with Authorization header returns 200 status with proper pdf content-type (application/pdf), PDF file generated (2,162 bytes) with valid %PDF header. ALL REVIEW REQUEST FEATURES ARE PRODUCTION-READY and working exactly according to specifications with no critical issues found. Multi-tenancy company setup, authentication with company context, and report exports all functioning perfectly. Backend URL tested: https://route-sales-ops.preview.emergentagent.com/api"

@@ -457,6 +457,27 @@ class ApiService {
     const response = await this.client.get('/health');
     return response.data;
   }
+
+  // Company Setup
+  async setupCompany(data: {
+    company: { name: string; contact_person: string; phone: string; email?: string; address?: string };
+    admin_name: string;
+    admin_phone: string;
+    admin_pin: string;
+  }) {
+    const response = await this.client.post('/companies/setup', data);
+    return response.data;
+  }
+
+  async getMyCompany() {
+    const response = await this.client.get('/companies/mine');
+    return response.data;
+  }
+
+  async updateMyCompany(data: { name: string; contact_person: string; phone: string; email?: string; address?: string }) {
+    const response = await this.client.put('/companies/mine', data);
+    return response.data;
+  }
 }
 
 export const api = new ApiService();

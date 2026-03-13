@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
-  Linking,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LogoHeader } from '../../src/components/LogoHeader';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 export default function ReportsScreen() {
   const [summary, setSummary] = useState<any>(null);
@@ -52,7 +53,11 @@ export default function ReportsScreen() {
     loadData();
   };
 
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
+
   const handleExportExcel = async () => {
+    setExportingExcel(true);
     try {
       const token = await AsyncStorage.getItem('auth_token');
       if (!token) {
@@ -62,45 +67,52 @@ export default function ReportsScreen() {
       
       const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || '';
       const url = `${baseUrl}/api/reports/export/excel?date_str=${selectedDate}`;
+      const fileName = `route_report_${selectedDate}.xlsx`;
       
       if (Platform.OS === 'web') {
-        // For web, create a link and trigger download
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `route_report_${selectedDate}.xlsx`);
-        
-        // Add auth header via fetch and blob
         const response = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        if (!response.ok) throw new Error('Download failed');
         const blob = await response.blob();
         const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
         link.href = downloadUrl;
+        link.setAttribute('download', fileName);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(downloadUrl);
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+        Alert.alert('Success', 'Excel report downloaded!');
       } else {
-        // For mobile, open in browser or use sharing
-        Alert.alert(
-          'Export Report',
-          'The Excel report will be downloaded to your device.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Download', 
-              onPress: () => Linking.openURL(url)
-            }
-          ]
-        );
+        const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+        const downloadResult = await FileSystem.downloadAsync(url, fileUri, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        
+        if (downloadResult.status !== 200) {
+          throw new Error(`Download failed with status ${downloadResult.status}`);
+        }
+        
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(downloadResult.uri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: 'Save Excel Report',
+          });
+        } else {
+          Alert.alert('Success', `Report saved to: ${downloadResult.uri}`);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Export error:', error);
-      Alert.alert('Error', 'Failed to export report');
+      Alert.alert('Error', 'Failed to export report. Please try again.');
+    } finally {
+      setExportingExcel(false);
     }
   };
 
   const handleExportPDF = async () => {
+    setExportingPDF(true);
     try {
       const token = await AsyncStorage.getItem('auth_token');
       if (!token) {
@@ -110,36 +122,47 @@ export default function ReportsScreen() {
       
       const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL || '';
       const url = `${baseUrl}/api/reports/export/pdf?date_str=${selectedDate}`;
+      const fileName = `sales_report_${selectedDate}.pdf`;
       
       if (Platform.OS === 'web') {
         const response = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        if (!response.ok) throw new Error('Download failed');
         const blob = await response.blob();
         const downloadUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = downloadUrl;
-        link.setAttribute('download', `sales_report_${selectedDate}.pdf`);
+        link.setAttribute('download', fileName);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(downloadUrl);
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+        Alert.alert('Success', 'PDF report downloaded!');
       } else {
-        Alert.alert(
-          'Export PDF',
-          'The PDF report will be downloaded to your device.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Download', 
-              onPress: () => Linking.openURL(url)
-            }
-          ]
-        );
+        const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+        const downloadResult = await FileSystem.downloadAsync(url, fileUri, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        
+        if (downloadResult.status !== 200) {
+          throw new Error(`Download failed with status ${downloadResult.status}`);
+        }
+        
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(downloadResult.uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: 'Save PDF Report',
+          });
+        } else {
+          Alert.alert('Success', `Report saved to: ${downloadResult.uri}`);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('PDF Export error:', error);
-      Alert.alert('Error', 'Failed to export PDF report');
+      Alert.alert('Error', 'Failed to export PDF report. Please try again.');
+    } finally {
+      setExportingPDF(false);
     }
   };
 
@@ -177,13 +200,21 @@ export default function ReportsScreen() {
           <Text style={styles.headerSubtitle}>{formatDate(selectedDate)}</Text>
         </View>
         <View style={styles.exportButtons}>
-          <TouchableOpacity style={styles.exportButton} onPress={handleExportExcel}>
-            <Ionicons name="document-text-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.exportButtonText}>Excel</Text>
+          <TouchableOpacity style={styles.exportButton} onPress={handleExportExcel} disabled={exportingExcel}>
+            {exportingExcel ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="document-text-outline" size={18} color="#FFFFFF" />
+            )}
+            <Text style={styles.exportButtonText}>{exportingExcel ? '...' : 'Excel'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.exportButton, styles.exportButtonPDF]} onPress={handleExportPDF}>
-            <Ionicons name="document-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.exportButtonText}>PDF</Text>
+          <TouchableOpacity style={[styles.exportButton, styles.exportButtonPDF]} onPress={handleExportPDF} disabled={exportingPDF}>
+            {exportingPDF ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="document-outline" size={18} color="#FFFFFF" />
+            )}
+            <Text style={styles.exportButtonText}>{exportingPDF ? '...' : 'PDF'}</Text>
           </TouchableOpacity>
         </View>
       </View>

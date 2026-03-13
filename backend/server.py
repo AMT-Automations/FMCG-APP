@@ -93,11 +93,34 @@ def is_admin(user: dict) -> bool:
 
 # ==================== MODELS ====================
 
+class CompanyCreate(BaseModel):
+    name: str
+    contact_person: str
+    phone: str
+    email: Optional[str] = None
+    address: Optional[str] = None
+
+class CompanySetup(BaseModel):
+    company: CompanyCreate
+    admin_name: str
+    admin_phone: str
+    admin_pin: str  # 4-digit PIN
+
+class CompanyResponse(BaseModel):
+    id: str
+    name: str
+    contact_person: str
+    phone: str
+    email: Optional[str] = None
+    address: Optional[str] = None
+    created_at: datetime
+
 class UserCreate(BaseModel):
     name: str
     phone: str
     pin: str  # 4-digit PIN
     role: str = "driver"  # admin, manager, driver, conductor
+    company_id: Optional[str] = None
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
@@ -120,6 +143,7 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     token: str
     user: UserResponse
+    company: Optional[CompanyResponse] = None
 
 class ProductCreate(BaseModel):
     name: str
@@ -408,6 +432,7 @@ async def register_user(user: UserCreate):
         "pin_hash": hash_pin(user.pin),
         "role": user.role,
         "is_active": True,
+        "company_id": user.company_id,
         "created_at": datetime.utcnow()
     }
     result = await db.users.insert_one(user_doc)
@@ -427,10 +452,94 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     token = create_token(str(user["_id"]), user["role"])
+    
+    # Include company info in response
+    company_info = None
+    if user.get("company_id"):
+        company = await db.companies.find_one({"_id": ObjectId(user["company_id"])})
+        if company:
+            company_info = str_id(company)
+    
     return {
         "token": token,
-        "user": str_id(user)
+        "user": str_id(user),
+        "company": company_info
     }
+
+# ==================== COMPANY SETUP ====================
+
+@api_router.post("/companies/setup")
+async def setup_company(setup: CompanySetup):
+    """Register a new company with its admin user - clean slate with no pre-loaded data"""
+    # Check if admin phone is already registered
+    existing = await db.users.find_one({"phone": setup.admin_phone})
+    if existing:
+        raise HTTPException(status_code=400, detail="This phone number is already registered")
+    
+    # Create company
+    company_doc = {
+        "name": setup.company.name,
+        "contact_person": setup.company.contact_person,
+        "phone": setup.company.phone,
+        "email": setup.company.email,
+        "address": setup.company.address,
+        "created_at": datetime.utcnow(),
+    }
+    result = await db.companies.insert_one(company_doc)
+    company_id = str(result.inserted_id)
+    
+    # Create admin user for the company
+    admin_doc = {
+        "name": setup.admin_name,
+        "phone": setup.admin_phone,
+        "pin_hash": hash_pin(setup.admin_pin),
+        "role": "admin",
+        "is_active": True,
+        "company_id": company_id,
+        "created_at": datetime.utcnow(),
+    }
+    await db.users.insert_one(admin_doc)
+    
+    return {
+        "message": "Company registered successfully",
+        "company_id": company_id,
+        "company_name": setup.company.name,
+        "admin_phone": setup.admin_phone,
+    }
+
+@api_router.get("/companies/mine", response_model=CompanyResponse)
+async def get_my_company(current_user: dict = Depends(get_current_user)):
+    """Get the current user's company details"""
+    company_id = current_user.get("company_id")
+    if not company_id:
+        raise HTTPException(status_code=404, detail="No company associated with this user")
+    
+    company = await db.companies.find_one({"_id": ObjectId(company_id)})
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    return str_id(company)
+
+@api_router.put("/companies/mine")
+async def update_my_company(data: CompanyCreate, current_user: dict = Depends(get_current_user)):
+    """Update the current user's company details"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    company_id = current_user.get("company_id")
+    if not company_id:
+        raise HTTPException(status_code=404, detail="No company associated")
+    
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    update_data["updated_at"] = datetime.utcnow()
+    
+    await db.companies.update_one(
+        {"_id": ObjectId(company_id)},
+        {"$set": update_data}
+    )
+    
+    company = await db.companies.find_one({"_id": ObjectId(company_id)})
+    return str_id(company)
 
 @api_router.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):

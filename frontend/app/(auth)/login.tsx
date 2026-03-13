@@ -196,6 +196,15 @@ export default function LoginScreen() {
                 </Text>
               </Text>
             </TouchableOpacity>
+
+            {/* New Company Registration */}
+            <TouchableOpacity
+              style={styles.companySetupButton}
+              onPress={() => router.push('/company-setup')}
+            >
+              <Ionicons name="business-outline" size={18} color="#3B82F6" />
+              <Text style={styles.companySetupText}>Register a New Company</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Seed Data Button */}
@@ -331,5 +340,23 @@ const styles = StyleSheet.create({
     color: '#3B82F6',
     fontSize: 14,
     marginLeft: 8,
+  },
+  companySetupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    gap: 8,
+  },
+  companySetupText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3B82F6',
   },
 });
