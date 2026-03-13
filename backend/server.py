@@ -23,7 +23,7 @@ import jwt
 from bson import ObjectId
 import xlsxwriter
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.pagesizes import letter, A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
@@ -2776,21 +2776,21 @@ async def export_report_pdf(
     
     sales = await db.sales.find(sales_query).to_list(1000)
     
-    # Create PDF
+    # Create PDF - use landscape for more room
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), topMargin=30, bottomMargin=30, leftMargin=30, rightMargin=30)
     styles = getSampleStyleSheet()
     elements = []
     
     # Custom styles
-    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=24, spaceAfter=20, alignment=1, textColor=colors.HexColor('#3B82F6'))
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=22, spaceAfter=6, alignment=1, textColor=colors.HexColor('#3B82F6'))
     subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], fontSize=12, spaceAfter=10, alignment=1, textColor=colors.HexColor('#64748B'))
     section_style = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=14, spaceBefore=20, spaceAfter=10, textColor=colors.HexColor('#1E293B'))
     
     # Header
     elements.append(Paragraph("Mzansi Distribution Tracker", title_style))
     elements.append(Paragraph(f"Route Sales Report - {date_str}", subtitle_style))
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
     
     # Summary section
     total_sales = len(sales)
@@ -2800,10 +2800,10 @@ async def export_report_pdf(
     
     elements.append(Paragraph("Summary", section_style))
     summary_data = [
-        ['Total Sales', 'Total Expected', 'Total Collected', 'Total Shortage'],
-        [str(total_sales), f'R {total_expected:.2f}', f'R {total_collected:.2f}', f'R {total_shortage:.2f}']
+        ['Total Sales', 'Total Expected', 'Total Collected', 'Total Shortage', 'Collection Rate'],
+        [str(total_sales), f'R {total_expected:.2f}', f'R {total_collected:.2f}', f'R {total_shortage:.2f}', f'{(total_collected/total_expected*100) if total_expected > 0 else 0:.1f}%']
     ]
-    summary_table = Table(summary_data, colWidths=[120, 120, 120, 120])
+    summary_table = Table(summary_data, colWidths=[130, 130, 130, 130, 130])
     summary_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3B82F6')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -2813,39 +2813,55 @@ async def export_report_pdf(
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8FAFC')),
         ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0')),
-        ('FONTSIZE', (0, 1), (-1, -1), 11),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
         ('TOPPADDING', (0, 1), (-1, -1), 10),
         ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
     ]))
     elements.append(summary_table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
     
     # Sales Detail section
     if sales:
         elements.append(Paragraph("Sales Details", section_style))
-        sales_data = [['Invoice #', 'Customer', 'Driver', 'Amount', 'Received', 'Shortage', 'Time']]
-        for sale in sales[:50]:  # Limit to 50 for PDF readability
+        sales_data = [['Invoice Number', 'Customer', 'Driver', 'Items', 'Amount', 'Received', 'Shortage', 'Payment', 'Time']]
+        for sale in sales[:50]:
+            items_list = []
+            for item in sale.get('items', []):
+                net = item.get('quantity_delivered', 0) - item.get('quantity_returned', 0)
+                items_list.append(f"{item.get('product_name', '?')} x{net}")
+            
+            payment_type = sale.get('payment_type', 'cash').upper()
+            if payment_type == 'SPLIT':
+                split_parts = []
+                for sp in sale.get('split_payments', []):
+                    split_parts.append(f"{sp.get('method','?').title()}: R{sp.get('amount',0):.0f}")
+                payment_type = ', '.join(split_parts) if split_parts else 'SPLIT'
+            
             sales_data.append([
-                sale.get('invoice_number', 'N/A')[:20],
-                sale.get('customer_name', 'N/A')[:15],
-                sale.get('driver_name', 'N/A')[:12],
+                sale.get('invoice_number', 'N/A'),
+                sale.get('customer_name', 'N/A'),
+                sale.get('driver_name', 'N/A'),
+                ', '.join(items_list),
                 f"R {sale.get('total_amount', 0):.2f}",
                 f"R {sale.get('cash_collected', 0):.2f}",
                 f"R {sale.get('shortage_amount', 0):.2f}",
+                payment_type,
                 sale.get('created_at', datetime.utcnow()).strftime('%H:%M')
             ])
         
-        sales_table = Table(sales_data, colWidths=[85, 75, 70, 65, 65, 60, 45])
+        sales_table = Table(sales_data, colWidths=[110, 85, 70, 130, 65, 65, 60, 100, 40])
         sales_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#10B981')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (3, 1), (3, -1), 'LEFT'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 8),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
             ('FONTSIZE', (0, 1), (-1, -1), 7),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
         elements.append(sales_table)
     
