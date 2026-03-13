@@ -3425,15 +3425,30 @@ async def update_route_schedule(route_id: str, schedule: DeliverySchedule, curre
     if not is_admin_or_manager(current_user):
         raise HTTPException(status_code=403, detail="Admin access required")
     
+    try:
+        oid = ObjectId(route_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid route ID")
+    
+    cf = get_company_filter(current_user)
+    route = await db.routes.find_one({"_id": oid, **cf})
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    
     await db.routes.update_one(
-        {"_id": ObjectId(route_id)},
+        {"_id": oid},
         {"$set": {"delivery_schedule": schedule.dict()}}
     )
     return {"message": "Delivery schedule updated"}
 
 @api_router.get("/routes/{route_id}/schedule")
 async def get_route_schedule(route_id: str, current_user: dict = Depends(get_current_user)):
-    route = await db.routes.find_one({"_id": ObjectId(route_id)})
+    try:
+        oid = ObjectId(route_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid route ID")
+    
+    route = await db.routes.find_one({"_id": oid})
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
     
@@ -3477,7 +3492,10 @@ async def get_customer_delivery_info(current_user: dict = Depends(get_current_us
     if not route_id:
         return {"message": "No route assigned", "next_delivery": None}
     
-    route = await db.routes.find_one({"_id": ObjectId(route_id)})
+    try:
+        route = await db.routes.find_one({"_id": ObjectId(route_id)})
+    except Exception:
+        return {"message": "Invalid route reference", "next_delivery": None}
     if not route:
         return {"message": "Route not found", "next_delivery": None}
     

@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     overflow: 'hidden',
     marginBottom: 16,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
   },
   appName: {
     fontSize: 20,

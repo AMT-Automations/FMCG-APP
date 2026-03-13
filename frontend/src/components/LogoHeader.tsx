@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
   },
   logoWrapper: {
     overflow: 'hidden',
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
   },
   textContainer: {
     justifyContent: 'center',
