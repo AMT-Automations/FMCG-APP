@@ -7,6 +7,15 @@ interface User {
   name: string;
   phone: string;
   role: string;
+  company_id?: string;
+  customer_profile?: {
+    business_name: string;
+    contact_person: string;
+    delivery_address: string;
+    location: string;
+    route_id: string;
+    route_name: string;
+  };
 }
 
 interface AuthContextType {

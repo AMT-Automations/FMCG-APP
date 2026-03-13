@@ -78,7 +78,8 @@ ROLE_HIERARCHY = {
     'admin': 4,
     'manager': 3,
     'driver': 2,
-    'conductor': 1
+    'conductor': 1,
+    'customer': 0
 }
 
 def check_role(user: dict, required_roles: List[str]) -> bool:
@@ -90,6 +91,9 @@ def is_admin_or_manager(user: dict) -> bool:
 
 def is_admin(user: dict) -> bool:
     return user.get('role') == 'admin'
+
+def is_customer(user: dict) -> bool:
+    return user.get('role') == 'customer'
 
 # ==================== MODELS ====================
 
@@ -135,6 +139,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool = True
     created_at: datetime
+    customer_profile: Optional[Dict[str, Any]] = None
 
 class LoginRequest(BaseModel):
     phone: str
@@ -3219,6 +3224,560 @@ async def clear_all_data(current_user: dict = Depends(get_current_user)):
     return {
         "message": "All practice data cleared successfully",
         "cleared": ["sales", "daily_routes", "stock_movements", "stock", "crates_tracking", "email_logs"]
+    }
+
+# ==================== ORDERING SYSTEM ====================
+
+# --- Order Models ---
+class CustomerRegister(BaseModel):
+    business_name: str
+    contact_person: str
+    phone: str
+    pin: str
+    delivery_address: Optional[str] = None
+    location: Optional[str] = None
+    company_id: str  # which distributor they order from
+    route_id: str    # which route/area they fall under
+
+class DeliverySchedule(BaseModel):
+    delivery_days: List[str] = []  # e.g. ["Monday", "Thursday"]
+    cut_off_hours_before: int = 16  # hours before delivery day to cut off orders
+    cut_off_time: str = "16:00"    # display time
+
+class OrderItemCreate(BaseModel):
+    product_id: str
+    product_name: str
+    quantity: int
+    unit_price: float
+
+class OrderCreate(BaseModel):
+    company_id: str
+    items: List[OrderItemCreate]
+    notes: Optional[str] = None
+
+class OrderAdjustItem(BaseModel):
+    product_id: str
+    product_name: str
+    original_quantity: int
+    adjusted_quantity: int
+    unit_price: float
+    reason: Optional[str] = None
+
+class OrderAdjust(BaseModel):
+    items: List[OrderAdjustItem]
+    adjustment_reason: Optional[str] = None
+
+ORDER_STATUSES = ["pending", "confirmed", "adjusted", "packed", "out_for_delivery", "delivered", "cancelled"]
+
+DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+def generate_order_number(company_name: str) -> str:
+    """Generate unique order number: COMPCODE-DATE-SEQ"""
+    code = ''.join(c for c in company_name.upper() if c.isalpha())[:4]
+    if len(code) < 3:
+        code = code.ljust(3, 'X')
+    date_str = datetime.utcnow().strftime("%Y%m%d")
+    import random
+    seq = random.randint(1, 999)
+    return f"{code}-{date_str}-{seq:03d}"
+
+def get_next_delivery_day(delivery_days: List[str], cut_off_hours: int = 16) -> Optional[dict]:
+    """Calculate the next delivery day and whether ordering is still open"""
+    if not delivery_days:
+        return None
+    
+    now = datetime.utcnow()
+    today_name = now.strftime("%A")
+    
+    # Build ordered list of delivery days from today
+    day_indices = {d: i for i, d in enumerate(DAYS_OF_WEEK)}
+    today_idx = day_indices.get(today_name, 0)
+    
+    for offset in range(0, 8):
+        check_idx = (today_idx + offset) % 7
+        check_day = DAYS_OF_WEEK[check_idx]
+        
+        if check_day in delivery_days:
+            delivery_date = now + timedelta(days=offset)
+            cut_off_date = delivery_date - timedelta(hours=cut_off_hours)
+            
+            if now < cut_off_date:
+                return {
+                    "delivery_day": check_day,
+                    "delivery_date": delivery_date.strftime("%Y-%m-%d"),
+                    "cut_off_time": cut_off_date.isoformat(),
+                    "is_open": True,
+                    "hours_until_cutoff": max(0, (cut_off_date - now).total_seconds() / 3600)
+                }
+    
+    # All cut-offs passed, find next week's first delivery
+    for offset in range(1, 8):
+        check_idx = (today_idx + offset) % 7
+        check_day = DAYS_OF_WEEK[check_idx]
+        if check_day in delivery_days:
+            delivery_date = now + timedelta(days=offset + 7)
+            cut_off_date = delivery_date - timedelta(hours=cut_off_hours)
+            return {
+                "delivery_day": check_day,
+                "delivery_date": delivery_date.strftime("%Y-%m-%d"),
+                "cut_off_time": cut_off_date.isoformat(),
+                "is_open": now < cut_off_date,
+                "hours_until_cutoff": max(0, (cut_off_date - now).total_seconds() / 3600)
+            }
+    
+    return None
+
+# --- Customer Registration ---
+@api_router.post("/auth/register-customer")
+async def register_customer(data: CustomerRegister):
+    """Register a new customer user linked to a distributor company and route"""
+    existing = await db.users.find_one({"phone": data.phone})
+    if existing:
+        raise HTTPException(status_code=400, detail="Phone number already registered")
+    
+    # Verify company exists
+    company = await db.companies.find_one({"_id": ObjectId(data.company_id)})
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    # Verify route exists
+    route = await db.routes.find_one({"_id": ObjectId(data.route_id)})
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    
+    user_doc = {
+        "name": data.contact_person,
+        "phone": data.phone,
+        "pin_hash": hash_pin(data.pin),
+        "role": "customer",
+        "is_active": True,
+        "company_id": data.company_id,
+        "customer_profile": {
+            "business_name": data.business_name,
+            "contact_person": data.contact_person,
+            "delivery_address": data.delivery_address,
+            "location": data.location,
+            "route_id": data.route_id,
+            "route_name": route.get("name", ""),
+        },
+        "created_at": datetime.utcnow()
+    }
+    result = await db.users.insert_one(user_doc)
+    
+    # Also create a customer record for the distribution system
+    customer_doc = {
+        "name": data.business_name,
+        "phone": data.phone,
+        "address": data.delivery_address or "",
+        "route_id": data.route_id,
+        "route_name": route.get("name", ""),
+        "is_active": True,
+        "balance": 0.0,
+        "company_id": data.company_id,
+        "user_id": str(result.inserted_id),
+        "created_by": str(result.inserted_id),
+        "created_at": datetime.utcnow()
+    }
+    await db.customers.insert_one(customer_doc)
+    
+    return {
+        "message": "Customer registered successfully",
+        "user_id": str(result.inserted_id),
+        "company_name": company.get("name"),
+        "route_name": route.get("name", ""),
+    }
+
+# --- Public: List Companies for customer registration ---
+@api_router.get("/companies/list")
+async def list_companies():
+    """Public endpoint - list all companies for customer registration"""
+    companies = await db.companies.find({}).to_list(100)
+    return [{"id": str(c["_id"]), "name": c["name"], "phone": c.get("phone", "")} for c in companies]
+
+# --- Public: List routes for a company ---
+@api_router.get("/companies/{company_id}/routes")
+async def list_company_routes(company_id: str):
+    """Public endpoint - list routes for a company with delivery schedules"""
+    routes = await db.routes.find({"company_id": company_id}).to_list(50)
+    result = []
+    for r in routes:
+        schedule = r.get("delivery_schedule", {})
+        result.append({
+            "id": str(r["_id"]),
+            "name": r.get("name", ""),
+            "description": r.get("description", ""),
+            "delivery_days": schedule.get("delivery_days", []),
+            "cut_off_time": schedule.get("cut_off_time", "16:00"),
+        })
+    return result
+
+# --- Public: List products for a company ---
+@api_router.get("/companies/{company_id}/products")
+async def list_company_products(company_id: str):
+    """Public endpoint - list products for a company (for customer browsing)"""
+    products = await db.products.find({"company_id": company_id}).to_list(200)
+    return [str_id(p) for p in products]
+
+# --- Route Delivery Schedule ---
+@api_router.put("/routes/{route_id}/schedule")
+async def update_route_schedule(route_id: str, schedule: DeliverySchedule, current_user: dict = Depends(get_current_user)):
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    await db.routes.update_one(
+        {"_id": ObjectId(route_id)},
+        {"$set": {"delivery_schedule": schedule.dict()}}
+    )
+    return {"message": "Delivery schedule updated"}
+
+@api_router.get("/routes/{route_id}/schedule")
+async def get_route_schedule(route_id: str, current_user: dict = Depends(get_current_user)):
+    route = await db.routes.find_one({"_id": ObjectId(route_id)})
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    
+    schedule = route.get("delivery_schedule", {"delivery_days": [], "cut_off_hours_before": 16, "cut_off_time": "16:00"})
+    delivery_info = get_next_delivery_day(
+        schedule.get("delivery_days", []),
+        schedule.get("cut_off_hours_before", 16)
+    )
+    
+    return {
+        "route_id": route_id,
+        "route_name": route.get("name", ""),
+        "schedule": schedule,
+        "next_delivery": delivery_info
+    }
+
+# --- Customer: Get products from their distributor ---
+@api_router.get("/customer/products")
+async def get_customer_products(current_user: dict = Depends(get_current_user)):
+    """Customer sees products from their assigned distributor"""
+    if not is_customer(current_user):
+        raise HTTPException(status_code=403, detail="Customer access only")
+    
+    company_id = current_user.get("company_id")
+    if not company_id:
+        return []
+    
+    products = await db.products.find({"company_id": company_id}).to_list(200)
+    return [str_id(p) for p in products]
+
+# --- Customer: Get delivery info ---
+@api_router.get("/customer/delivery-info")
+async def get_customer_delivery_info(current_user: dict = Depends(get_current_user)):
+    """Get the customer's next delivery day and cut-off info"""
+    if not is_customer(current_user):
+        raise HTTPException(status_code=403, detail="Customer access only")
+    
+    profile = current_user.get("customer_profile", {})
+    route_id = profile.get("route_id")
+    
+    if not route_id:
+        return {"message": "No route assigned", "next_delivery": None}
+    
+    route = await db.routes.find_one({"_id": ObjectId(route_id)})
+    if not route:
+        return {"message": "Route not found", "next_delivery": None}
+    
+    schedule = route.get("delivery_schedule", {"delivery_days": [], "cut_off_hours_before": 16})
+    delivery_info = get_next_delivery_day(
+        schedule.get("delivery_days", []),
+        schedule.get("cut_off_hours_before", 16)
+    )
+    
+    company = await db.companies.find_one({"_id": ObjectId(current_user.get("company_id", "000000000000000000000000"))})
+    
+    return {
+        "company_name": company.get("name", "") if company else "",
+        "route_name": route.get("name", ""),
+        "schedule": schedule,
+        "next_delivery": delivery_info,
+        "profile": profile,
+    }
+
+# --- Place Order ---
+@api_router.post("/orders")
+async def create_order(order: OrderCreate, current_user: dict = Depends(get_current_user)):
+    """Customer places an order"""
+    if not is_customer(current_user):
+        raise HTTPException(status_code=403, detail="Customer access only")
+    
+    # Get customer profile
+    profile = current_user.get("customer_profile", {})
+    route_id = profile.get("route_id")
+    
+    # Verify company
+    company = await db.companies.find_one({"_id": ObjectId(order.company_id)})
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    # Check delivery schedule and cut-off
+    if route_id:
+        route = await db.routes.find_one({"_id": ObjectId(route_id)})
+        schedule = route.get("delivery_schedule", {}) if route else {}
+        delivery_days = schedule.get("delivery_days", [])
+        cut_off_hours = schedule.get("cut_off_hours_before", 16)
+        
+        delivery_info = get_next_delivery_day(delivery_days, cut_off_hours)
+        
+        if delivery_info and not delivery_info.get("is_open", True):
+            return {"error": True, "message": f"Orders for the next delivery are closed. Next delivery: {delivery_info.get('delivery_day', 'TBD')}"}
+    else:
+        delivery_info = None
+    
+    # Check for duplicate orders (same customer, same day)
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    existing_order = await db.orders.find_one({
+        "customer_id": current_user["id"],
+        "company_id": order.company_id,
+        "created_at": {"$gte": today_start},
+        "status": {"$nin": ["cancelled"]}
+    })
+    if existing_order:
+        raise HTTPException(status_code=400, detail="You already have an active order for today. Please wait or cancel the existing order.")
+    
+    # Generate order number
+    order_number = generate_order_number(company.get("name", "ORD"))
+    # Ensure unique
+    while await db.orders.find_one({"order_number": order_number}):
+        order_number = generate_order_number(company.get("name", "ORD"))
+    
+    total_amount = sum(item.quantity * item.unit_price for item in order.items)
+    
+    order_doc = {
+        "order_number": order_number,
+        "company_id": order.company_id,
+        "customer_id": current_user["id"],
+        "customer_name": profile.get("business_name", current_user.get("name", "")),
+        "customer_phone": current_user.get("phone", ""),
+        "route_id": route_id,
+        "route_name": profile.get("route_name", ""),
+        "items": [item.dict() for item in order.items],
+        "original_items": [item.dict() for item in order.items],
+        "total_amount": total_amount,
+        "status": "pending",
+        "delivery_day": delivery_info.get("delivery_day", "") if delivery_info else "",
+        "delivery_date": delivery_info.get("delivery_date", "") if delivery_info else "",
+        "notes": order.notes,
+        "adjustments": [],
+        "status_history": [{"status": "pending", "timestamp": datetime.utcnow().isoformat(), "by": current_user["id"]}],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+    
+    result = await db.orders.insert_one(order_doc)
+    order_doc["_id"] = result.inserted_id
+    
+    return str_id(order_doc)
+
+# --- Get Orders ---
+@api_router.get("/orders")
+async def get_orders(
+    status: Optional[str] = None,
+    route_id: Optional[str] = None,
+    date_str: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get orders - filtered by role"""
+    query = {}
+    
+    if is_customer(current_user):
+        query["customer_id"] = current_user["id"]
+    else:
+        # Distributor staff see their company's orders
+        cf = get_company_filter(current_user)
+        query.update(cf)
+        
+        # Drivers only see their route's orders
+        if current_user.get("role") == "driver":
+            active_route = await db.daily_routes.find_one({
+                "driver_id": current_user["id"],
+                "status": "active"
+            })
+            if active_route:
+                query["route_id"] = active_route.get("route_id")
+            else:
+                return []
+    
+    if status:
+        query["status"] = status
+    if route_id:
+        query["route_id"] = route_id
+    if date_str:
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            query["created_at"] = {
+                "$gte": date_obj,
+                "$lt": date_obj + timedelta(days=1)
+            }
+        except ValueError:
+            pass
+    
+    orders = await db.orders.find(query).sort("created_at", -1).to_list(500)
+    return [str_id(o) for o in orders]
+
+# --- Get Single Order ---
+@api_router.get("/orders/{order_id}")
+async def get_order(order_id: str, current_user: dict = Depends(get_current_user)):
+    order = await db.orders.find_one({"_id": ObjectId(order_id)})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Security: customers can only see their own orders
+    if is_customer(current_user) and order.get("customer_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    return str_id(order)
+
+class OrderStatusUpdate(BaseModel):
+    status: str
+
+# --- Update Order Status ---
+@api_router.put("/orders/{order_id}/status")
+async def update_order_status(order_id: str, body: OrderStatusUpdate, current_user: dict = Depends(get_current_user)):
+    status = body.status
+    if is_customer(current_user):
+        # Customers can only cancel pending orders
+        if status != "cancelled":
+            raise HTTPException(status_code=403, detail="Customers can only cancel orders")
+    
+    if status not in ORDER_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {ORDER_STATUSES}")
+    
+    order = await db.orders.find_one({"_id": ObjectId(order_id)})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if is_customer(current_user) and order.get("customer_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if is_customer(current_user) and order.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Can only cancel pending orders")
+    
+    await db.orders.update_one(
+        {"_id": ObjectId(order_id)},
+        {
+            "$set": {"status": status, "updated_at": datetime.utcnow()},
+            "$push": {"status_history": {"status": status, "timestamp": datetime.utcnow().isoformat(), "by": current_user["id"]}}
+        }
+    )
+    
+    return {"message": f"Order status updated to {status}"}
+
+# --- Adjust Order (Distributor) ---
+@api_router.put("/orders/{order_id}/adjust")
+async def adjust_order(order_id: str, adjustment: OrderAdjust, current_user: dict = Depends(get_current_user)):
+    if is_customer(current_user):
+        raise HTTPException(status_code=403, detail="Only distributors can adjust orders")
+    
+    order = await db.orders.find_one({"_id": ObjectId(order_id)})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order.get("status") in ["delivered", "cancelled"]:
+        raise HTTPException(status_code=400, detail="Cannot adjust delivered or cancelled orders")
+    
+    # Update items
+    new_items = []
+    for adj_item in adjustment.items:
+        new_items.append({
+            "product_id": adj_item.product_id,
+            "product_name": adj_item.product_name,
+            "quantity": adj_item.adjusted_quantity,
+            "unit_price": adj_item.unit_price,
+        })
+    
+    new_total = sum(i["quantity"] * i["unit_price"] for i in new_items)
+    
+    await db.orders.update_one(
+        {"_id": ObjectId(order_id)},
+        {
+            "$set": {
+                "items": new_items,
+                "total_amount": new_total,
+                "status": "adjusted",
+                "updated_at": datetime.utcnow(),
+            },
+            "$push": {
+                "adjustments": {
+                    "adjusted_by": current_user["id"],
+                    "adjusted_by_name": current_user.get("name", ""),
+                    "reason": adjustment.adjustment_reason,
+                    "items": [i.dict() for i in adjustment.items],
+                    "timestamp": datetime.utcnow().isoformat()
+                },
+                "status_history": {"status": "adjusted", "timestamp": datetime.utcnow().isoformat(), "by": current_user["id"]}
+            }
+        }
+    )
+    
+    return {"message": "Order adjusted successfully", "new_total": new_total}
+
+# --- Order Dashboard for Distributor ---
+@api_router.get("/orders/dashboard/summary")
+async def get_order_dashboard(current_user: dict = Depends(get_current_user)):
+    if is_customer(current_user):
+        raise HTTPException(status_code=403, detail="Distributor access only")
+    
+    query = get_company_filter(current_user)
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    query["created_at"] = {"$gte": today}
+    
+    orders = await db.orders.find(query).to_list(1000)
+    
+    summary = {
+        "total_orders": len(orders),
+        "pending": len([o for o in orders if o.get("status") == "pending"]),
+        "confirmed": len([o for o in orders if o.get("status") == "confirmed"]),
+        "adjusted": len([o for o in orders if o.get("status") == "adjusted"]),
+        "packed": len([o for o in orders if o.get("status") == "packed"]),
+        "out_for_delivery": len([o for o in orders if o.get("status") == "out_for_delivery"]),
+        "delivered": len([o for o in orders if o.get("status") == "delivered"]),
+        "cancelled": len([o for o in orders if o.get("status") == "cancelled"]),
+        "total_value": sum(o.get("total_amount", 0) for o in orders if o.get("status") not in ["cancelled"]),
+    }
+    
+    # Route breakdown
+    route_orders = {}
+    for o in orders:
+        rn = o.get("route_name", "Unassigned")
+        if rn not in route_orders:
+            route_orders[rn] = {"count": 0, "value": 0}
+        route_orders[rn]["count"] += 1
+        route_orders[rn]["value"] += o.get("total_amount", 0)
+    
+    summary["by_route"] = route_orders
+    return summary
+
+# --- Route Packing Summary ---
+@api_router.get("/orders/packing/{route_id}")
+async def get_route_packing_summary(route_id: str, current_user: dict = Depends(get_current_user)):
+    if is_customer(current_user):
+        raise HTTPException(status_code=403, detail="Distributor access only")
+    
+    query = get_company_filter(current_user)
+    query["route_id"] = route_id
+    query["status"] = {"$in": ["pending", "confirmed", "adjusted"]}
+    
+    orders = await db.orders.find(query).to_list(500)
+    
+    product_totals = {}
+    for order in orders:
+        for item in order.get("items", []):
+            pid = item.get("product_id", "")
+            if pid not in product_totals:
+                product_totals[pid] = {"product_name": item.get("product_name", ""), "total_quantity": 0, "orders_count": 0}
+            product_totals[pid]["total_quantity"] += item.get("quantity", 0)
+            product_totals[pid]["orders_count"] += 1
+    
+    route = await db.routes.find_one({"_id": ObjectId(route_id)})
+    
+    return {
+        "route_id": route_id,
+        "route_name": route.get("name", "") if route else "",
+        "total_orders": len(orders),
+        "products": list(product_totals.values()),
     }
 
 # ==================== SUPPORT INFO ====================

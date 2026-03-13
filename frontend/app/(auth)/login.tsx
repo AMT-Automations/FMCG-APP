@@ -205,6 +205,15 @@ export default function LoginScreen() {
               <Ionicons name="business-outline" size={18} color="#3B82F6" />
               <Text style={styles.companySetupText}>Register a New Company</Text>
             </TouchableOpacity>
+
+            {/* Customer Registration */}
+            <TouchableOpacity
+              style={styles.customerRegisterButton}
+              onPress={() => router.push('/customer-register')}
+            >
+              <Ionicons name="cart-outline" size={18} color="#10B981" />
+              <Text style={styles.customerRegisterText}>Register as Customer</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Seed Data Button */}
@@ -358,5 +367,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#3B82F6',
+  },
+  customerRegisterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#10B981',
+    gap: 8,
+  },
+  customerRegisterText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#10B981',
   },
 });

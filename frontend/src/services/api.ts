@@ -478,6 +478,113 @@ class ApiService {
     const response = await this.client.put('/companies/mine', data);
     return response.data;
   }
+
+  // ==================== ORDERING SYSTEM ====================
+
+  // Public: List companies for customer registration
+  async listCompanies() {
+    const response = await this.client.get('/companies/list');
+    return response.data;
+  }
+
+  // Public: List routes for a company
+  async listCompanyRoutes(companyId: string) {
+    const response = await this.client.get(`/companies/${companyId}/routes`);
+    return response.data;
+  }
+
+  // Public: List products for a company
+  async listCompanyProducts(companyId: string) {
+    const response = await this.client.get(`/companies/${companyId}/products`);
+    return response.data;
+  }
+
+  // Customer registration
+  async registerCustomer(data: {
+    business_name: string;
+    contact_person: string;
+    phone: string;
+    pin: string;
+    delivery_address?: string;
+    company_id: string;
+    route_id: string;
+  }) {
+    const response = await this.client.post('/auth/register-customer', data);
+    return response.data;
+  }
+
+  // Customer: Get products from assigned distributor
+  async getCustomerProducts() {
+    const response = await this.client.get('/customer/products');
+    return response.data;
+  }
+
+  // Customer: Get delivery info
+  async getCustomerDeliveryInfo() {
+    const response = await this.client.get('/customer/delivery-info');
+    return response.data;
+  }
+
+  // Create order
+  async createOrder(data: {
+    company_id: string;
+    items: { product_id: string; product_name: string; quantity: number; unit_price: number }[];
+    notes?: string;
+  }) {
+    const response = await this.client.post('/orders', data);
+    return response.data;
+  }
+
+  // Get orders (filtered by role automatically)
+  async getOrders(params?: { status?: string; route_id?: string; date_str?: string }) {
+    const response = await this.client.get('/orders', { params });
+    return response.data;
+  }
+
+  // Get single order
+  async getOrder(orderId: string) {
+    const response = await this.client.get(`/orders/${orderId}`);
+    return response.data;
+  }
+
+  // Update order status
+  async updateOrderStatus(orderId: string, status: string) {
+    const response = await this.client.put(`/orders/${orderId}/status`, { status });
+    return response.data;
+  }
+
+  // Adjust order (distributor)
+  async adjustOrder(orderId: string, data: {
+    items: { product_id: string; product_name: string; original_quantity: number; adjusted_quantity: number; unit_price: number; reason?: string }[];
+    adjustment_reason?: string;
+  }) {
+    const response = await this.client.put(`/orders/${orderId}/adjust`, data);
+    return response.data;
+  }
+
+  // Get order dashboard summary (distributor)
+  async getOrderDashboard() {
+    const response = await this.client.get('/orders/dashboard/summary');
+    return response.data;
+  }
+
+  // Get route packing summary
+  async getRoutePacking(routeId: string) {
+    const response = await this.client.get(`/orders/packing/${routeId}`);
+    return response.data;
+  }
+
+  // Update route delivery schedule
+  async updateRouteSchedule(routeId: string, data: { delivery_days: string[]; cut_off_hours_before?: number; cut_off_time?: string }) {
+    const response = await this.client.put(`/routes/${routeId}/schedule`, data);
+    return response.data;
+  }
+
+  // Get route delivery schedule
+  async getRouteSchedule(routeId: string) {
+    const response = await this.client.get(`/routes/${routeId}/schedule`);
+    return response.data;
+  }
 }
 
 export const api = new ApiService();

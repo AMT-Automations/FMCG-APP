@@ -18,6 +18,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="(auth)/login" />
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(customer-tabs)" />
           <Stack.Screen 
             name="sales/[customerId]" 
             options={{ 
@@ -48,6 +49,27 @@ export default function RootLayout() {
           />
           <Stack.Screen 
             name="admin" 
+            options={{ 
+              presentation: 'modal',
+              animation: 'slide_from_bottom'
+            }} 
+          />
+          <Stack.Screen 
+            name="customer-register" 
+            options={{ 
+              presentation: 'modal',
+              animation: 'slide_from_bottom'
+            }} 
+          />
+          <Stack.Screen 
+            name="order-confirmation" 
+            options={{ 
+              presentation: 'modal',
+              animation: 'slide_from_bottom'
+            }} 
+          />
+          <Stack.Screen 
+            name="orders-management" 
             options={{ 
               presentation: 'modal',
               animation: 'slide_from_bottom'

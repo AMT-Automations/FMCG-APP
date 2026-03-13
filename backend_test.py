@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Backend URL from frontend environment
-BACKEND_URL = "https://route-sales-ops.preview.emergentagent.com/api"
+BACKEND_URL = "https://order-system-preview-2.preview.emergentagent.com/api"
 
 class MultiTenancyTester:
     def __init__(self):

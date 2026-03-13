@@ -1,373 +1,164 @@
 <analysis>
 
-**original_problem_statement:** The user has provided a comprehensive list of fixes and new features to be implemented, aiming to transform the app into a complete operational tool for route sales, cash accountability, inventory management, and reporting.
+**original_problem_statement:** The user wants to add a major new feature to the existing multi-tenant route sales management app: a complete **Customer Ordering System**. This will transform the app into a two-sided ecosystem where distribution companies manage their operations and their customers can place orders directly through the app.
+
+This new system must support multiple distribution companies, allow customers to register and choose which company to order from, generate unique order numbers, provide order confirmation and sharing (via WhatsApp), and handle delivery day schedules. Future requirements include order adjustments by the distributor, customer notifications, and an order cut-off system to ensure operational efficiency.
 
 **PRODUCT REQUIREMENTS:**
-1.  **Reporting Export Fix (High Priority):**
-    *   Ensure reports can be exported to Microsoft Excel (.xlsx), Google Sheets compatible format, and PDF. CSV is an optional backup.
-    *   Exports must be well-structured and formatted for readability.
-    *   Include filters for Date, Route, Driver, Product, and Customer.
-    *   If Excel export fails, the system should offer a Google Sheets link as a fallback.
-2.  **Cash Shortage Tracking:**
-    *   Capture Invoice Amount, Cash Received, and automatically calculate Shortage Amount ().
-    *   Reports must show shortages per transaction and in route summary reports (Total Expected, Total Collected, Total Shortages).
-3.  **Automatic Invoice/Transaction Number:**
-    *   Generate a unique, automatic transaction ID for each sale (e.g., ).
-    *   This ID must appear on the sales screen, receipts, and all reports/exports.
-4.  **UI Fix (Sales Screen):**
-    *   The quantity number displayed between the  and  buttons on the sales entry screen is too large for its container.
-    *   Fix the UI so the number fits clearly and remains centered and readable on all screen sizes.
-5.  **Full Stock Management Module:**
-    *   **Stock Receiving:** Record incoming stock with details like date, product, quantity, and supplier.
-    *   **Stock Take:** Allow manual stock counts and record variance.
-    *   **Stock Adjustment:** A feature to adjust stock for damages, spoilage, theft, etc., with reasons and accountability.
-    *   **Automatic Weekly Stock Report:** Automatically generate and email a detailed stock report (Opening, Received, Sold, Adjustments, Closing) every Friday at 11:00 AM.
-6.  **Email Report Management:**
-    *   An admin feature to manage a list of email recipients for various automated reports.
-    *   Admins should be able to add/remove recipients and assign specific reports to them (e.g., sales reports to , stock reports to ).
+1.  **Dual User Ecosystem:**
+    *   **Distributors:** Manage products, routes, customers, and drivers. Receive and manage incoming customer orders.
+    *   **Customers:** A new user type with a simplified interface to view products from specific distributors, place orders, and track order status.
+2.  **Multi-Tenancy & Marketplace:**
+    *   Customers must be able to register and select which distribution company they want to order from.
+    *   A customer should be able to order from multiple different companies on the platform.
+    *   Data must remain strictly isolated: companies only see their own customers, orders, and products.
+3.  **Customer Ordering Flow:**
+    *   A simple UI for customers to select a company, browse their products, add items to a cart, and submit an order.
+    *   The system must generate a unique, trackable order number (e.g., ).
+4.  **Order Confirmation & Sharing:**
+    *   After placing an order, the customer must see a confirmation screen with the order number and status.
+    *   Customers must be able to share their order confirmation via a native Share sheet (specifically for WhatsApp, SMS, Email).
+5.  **Delivery & Order Management:**
+    *   Distributors must be able to assign delivery days to their routes. The app should inform the customer of their next delivery day.
+    *   Distributors need a dashboard to view and manage incoming orders (confirm, adjust for stock).
+    *   Drivers should see orders assigned to their specific route.
+6.  **Order Cut-Off System (Future Phase):**
+    *   Distributors must be able to set an order cut-off time for each route (e.g., order by Monday 4 PM for Tuesday delivery).
+    *   The system should prevent late orders and notify customers of the next available delivery slot.
+    *   The system should include reminder notifications and a visual countdown timer for customers.
 
 **User's preferred language**: English
 
 **what currently exists?**
-A comprehensive mobile app with role-based access for Admins, Drivers, and other roles. Key existing features include:
-- User authentication (JWT) and management.
-- Route and Customer management (Admin).
-- A full Vehicle Management module, allowing vehicles to be assigned to daily routes.
-- A driver-facing UI to start, continue, and end routes.
-- A sales recording screen for drivers to log product sales per customer, including tracking of crates (dropped/collected).
-- A reports screen with an enhanced Excel export feature.
-- An admin dashboard for managing users, vehicles, routes, and products.
-- Timestamps are automatically added to most transactions.
-- Customer-specific pricing is implemented.
+The application is a stable, multi-tenant route sales management platform. The previous session successfully implemented full data isolation, allowing multiple companies to register and operate without seeing each other's data (products, routes, customers, sales). Key features like sales processing, stock management, detailed vehicle inspections, and robust PDF/Excel report downloads are complete and functional. The UI/UX issues from the previous fork (split payments, VAT logic, invoice visibility) have been resolved. The app has a professional look and feel with consistent branding.
 
 **Last working item**:
-    - Last item agent was working: The agent was starting the implementation of a large set of new features requested by the user (PRD above). The work began on the backend  file. The agent attempted to install the  library for PDF generation, which failed. It then proceeded to add new Pydantic models for Stock Management and update the  model for cash shortage tracking and invoice numbers. The process was interrupted mid-file-edit.
+    - Last item agent was working: The agent began **Phase 1** of the new **Customer Ordering System**. It started implementing the backend foundation by adding new Pydantic models (, , , etc.) and the initial set of FastAPI endpoints for the ordering workflow to . This includes endpoints for customer registration, fetching company lists, fetching products for a specific company, and creating new orders.
     - Status: IN PROGRESS
     - Agent Testing Done: N
     - Which testing method agent to use? backend testing agent
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  Issue 1: (P0) Backend is broken due to incomplete feature implementation.
-  Issue 2: (P1) UI bug on the sales screen.
-  Issue 3: (P2) Recurring web preview issue.
-
-  Issues Detail:
-  - Issue 1: Backend Broken Mid-Update
-     - Attempted fixes: The agent started editing  to add new models and logic for the requested features but was interrupted. The Looking in indexes: https://pypi.org/simple, https://d33sy5i8bnduwe.cloudfront.net/simple/
-Requirement already satisfied: reportlab in /root/.venv/lib/python3.11/site-packages (4.4.10)
-Requirement already satisfied: pillow>=9.0.0 in /root/.venv/lib/python3.11/site-packages (from reportlab) (12.1.1)
-Requirement already satisfied: charset-normalizer in /root/.venv/lib/python3.11/site-packages (from reportlab) (3.4.4) command also failed.
-     - Next debug checklist:
-        1. Verify Looking in indexes: https://pypi.org/simple, https://d33sy5i8bnduwe.cloudfront.net/simple/
-Requirement already satisfied: reportlab in /root/.venv/lib/python3.11/site-packages (4.4.10)
-Requirement already satisfied: pillow>=9.0.0 in /root/.venv/lib/python3.11/site-packages (from reportlab) (12.1.1)
-Requirement already satisfied: charset-normalizer in /root/.venv/lib/python3.11/site-packages (from reportlab) (3.4.4) is successful. If it fails, troubleshoot the installation.
-        2. Review  to identify the incomplete code blocks where the agent left off (it was updating the  model).
-        3. Complete the definition of all new backend models (Stock, Adjustments, Shortages, etc.).
-        4. Implement the new API endpoints related to these models.
-        5. Restart the backend service and ensure it's healthy.
-     - Why fix this issue and what will be achieved with the fix? This is the first and most critical step to implementing the user's extensive list of new features. A stable backend is required before any frontend work can begin.
-     - Status: IN PROGRESS
-     - Is recurring issue? N
-     - Should Test frontend/backend/both after fix? backend
-     - Blocked on other issue: None
-
-  - Issue 2: Sales Screen UI Bug
-     - Attempted fixes: None. This is a newly reported issue.
-     - Next debug checklist:
-        1. Locate the file for the sales screen ().
-        2. Examine the JSX and  for the component that displays the quantity between the  and  buttons.
-        3. Adjust the styling (e.g., , , , or using ) to ensure the number does not overflow its container.
-        4. Test with single, double, and triple-digit numbers to ensure it scales correctly.
-     - Why fix this issue and what will be achieved with the fix? This is a direct UI fix requested by the user to improve usability and readability for drivers.
-     - Status: NOT STARTED
-     - Is recurring issue? N
-     - Should Test frontend/backend/both after fix? frontend
-     - Blocked on other issue: None
-
-  - Issue 3: Blank App Preview
-     - Attempted fixes: The agent has encountered this multiple times and has tried restarting expo, clearing caches, checking for syntax errors, and using the . The issue appears intermittent and might be related to the  tunnel or Expo's web bundler.
-     - Next debug checklist:
-        1. When the user reports this, first verify with the .
-        2. If the screenshot shows the app, instruct the user to do a hard refresh (Ctrl+F5) or use an incognito window.
-        3. If the screenshot is blank, restart 
-  Usage: expo [command] [options]
-
-  Options:
-  
-    -V, --version                     output the version number
-    --non-interactive                 Fail, if an interactive prompt would be required to continue.
-    -h, --help                        output usage information
-  
-  Commands:
-
-    init [name]                       Create a new Expo project
-    start [path]                      Start a local dev server for the app
-    start:web [path]                  Start a Webpack dev server for the web app
-    export [path]                     Export the static files of the app for hosting it on a web server
-    install [packages...]             Install a module or other package to a project
-    run:android [path]                Run the Android app binary locally
-    run:ios [path]                    Run the iOS app binary locally
-    send [path]                       Share the project's URL to an email address
-
-    login                             Login to an Expo account
-    logout                            Logout of an Expo account
-    register                          Sign up for a new Expo account
-    whoami                            Return the currently authenticated account
-
-    client:install:ios                Install Expo Go for iOS on the simulator
-    client:install:android            Install Expo Go for Android on a connected device or emulator
-
-    config [path]                     Show the project config
-    doctor [path]                     Diagnose issues with the project
-    upgrade [sdk-version]             Upgrade the project packages and config for the given SDK version
-
-    customize:web [path]              Eject the default web files for customization
-    prebuild [path]                   Create native iOS and Android project files before building natively.
-                                      Learn more: https://docs.expo.dev/workflow/customizing/
-
-    build:web [path]                  Build the web app for production
-
-    credentials:manager [path]        Superseded by eas credentials in eas-cli
-
-    url [path]                        Log a URL for opening the project in Expo Go
-    url:ipa [path]                    Log the download URL for the standalone iOS binary
-    url:apk [path]                    Log the download URL for the standalone Android binary
-
-    webhooks [path]                   List all webhooks for a project
-    webhooks:add [path]               Add a webhook to a project
-    webhooks:remove [path]            Delete a webhook
-    webhooks:update [path]            Update an existing webhook
-
-    build:ios [path]                  Superseded by eas build in eas-cli
-    build:android [path]              Superseded by eas build in eas-cli
-    build:status [path]               Superseded by eas build:list in eas-cli
-    eject [path]                      Superseded by expo prebuild
-    fetch:ios:certs [path]            Superseded by eas credentials in eas-cli
-    fetch:android:keystore [path]     Superseded by eas credentials in eas-cli
-    fetch:android:hashes [path]       Superseded by eas credentials in eas-cli
-    fetch:android:upload-cert [path]  Superseded by eas credentials in eas-cli
-    publish [path]                    Superseded by eas update in eas-cli
-    publish:set [path]                Superseded by eas update:republish in eas-cli
-    publish:rollback [path]           Superseded by eas update:republish in eas-cli
-    publish:history [path]            Superseded by eas update:list in eas-cli
-    publish:details [path]            Superseded by eas update:view in eas-cli
-    push:android:upload [path]        Superseded by eas credentials in eas-cli
-    push:android:show [path]          Superseded by eas credentials in eas-cli
-    push:android:clear [path]         Superseded by eas credentials in eas-cli
-    upload:android [path]             Superseded by eas submit in eas-cli
-    upload:ios [path]                 Superseded by eas submit in eas-cli
-    client:ios [path]                 Superseded by Expo Dev Clients
-
-[14:05:06]   Run a command with --help for more info 💡
-[14:05:06]     $ expo start --help
-[14:05:06] using expo: ERROR (not running)
-expo: started.
-        4. Check 
-  Usage: expo [command] [options]
-
-  Options:
-  
-    -V, --version                     output the version number
-    --non-interactive                 Fail, if an interactive prompt would be required to continue.
-    -h, --help                        output usage information
-  
-  Commands:
-
-    init [name]                       Create a new Expo project
-    start [path]                      Start a local dev server for the app
-    start:web [path]                  Start a Webpack dev server for the web app
-    export [path]                     Export the static files of the app for hosting it on a web server
-    install [packages...]             Install a module or other package to a project
-    run:android [path]                Run the Android app binary locally
-    run:ios [path]                    Run the iOS app binary locally
-    send [path]                       Share the project's URL to an email address
-
-    login                             Login to an Expo account
-    logout                            Logout of an Expo account
-    register                          Sign up for a new Expo account
-    whoami                            Return the currently authenticated account
-
-    client:install:ios                Install Expo Go for iOS on the simulator
-    client:install:android            Install Expo Go for Android on a connected device or emulator
-
-    config [path]                     Show the project config
-    doctor [path]                     Diagnose issues with the project
-    upgrade [sdk-version]             Upgrade the project packages and config for the given SDK version
-
-    customize:web [path]              Eject the default web files for customization
-    prebuild [path]                   Create native iOS and Android project files before building natively.
-                                      Learn more: https://docs.expo.dev/workflow/customizing/
-
-    build:web [path]                  Build the web app for production
-
-    credentials:manager [path]        Superseded by eas credentials in eas-cli
-
-    url [path]                        Log a URL for opening the project in Expo Go
-    url:ipa [path]                    Log the download URL for the standalone iOS binary
-    url:apk [path]                    Log the download URL for the standalone Android binary
-
-    webhooks [path]                   List all webhooks for a project
-    webhooks:add [path]               Add a webhook to a project
-    webhooks:remove [path]            Delete a webhook
-    webhooks:update [path]            Update an existing webhook
-
-    build:ios [path]                  Superseded by eas build in eas-cli
-    build:android [path]              Superseded by eas build in eas-cli
-    build:status [path]               Superseded by eas build:list in eas-cli
-    eject [path]                      Superseded by expo prebuild
-    fetch:ios:certs [path]            Superseded by eas credentials in eas-cli
-    fetch:android:keystore [path]     Superseded by eas credentials in eas-cli
-    fetch:android:hashes [path]       Superseded by eas credentials in eas-cli
-    fetch:android:upload-cert [path]  Superseded by eas credentials in eas-cli
-    publish [path]                    Superseded by eas update in eas-cli
-    publish:set [path]                Superseded by eas update:republish in eas-cli
-    publish:rollback [path]           Superseded by eas update:republish in eas-cli
-    publish:history [path]            Superseded by eas update:list in eas-cli
-    publish:details [path]            Superseded by eas update:view in eas-cli
-    push:android:upload [path]        Superseded by eas credentials in eas-cli
-    push:android:show [path]          Superseded by eas credentials in eas-cli
-    push:android:clear [path]         Superseded by eas credentials in eas-cli
-    upload:android [path]             Superseded by eas submit in eas-cli
-    upload:ios [path]                 Superseded by eas submit in eas-cli
-    client:ios [path]                 Superseded by Expo Dev Clients
-
-[14:05:07]   Run a command with --help for more info 💡
-[14:05:07]     $ expo start --help
-[14:05:07] logs for bundling errors.
-        5. Guide the user towards testing with the **Expo Go app** as a more reliable alternative to the web preview.
-     - Why fix this issue and what will be achieved with the fix? This is a major source of user frustration and wastes time. A reliable preview/testing method is crucial for development.
-     - Status: NOT STARTED
-     - Is recurring issue? Y
-     - Should Test frontend/backend/both after fix? frontend
-     - Blocked on other issue: None
+There are no outstanding bugs or issues. The work is focused on new feature development.
 
 **In progress Task List**:
-  Task 1: (P0) Implement comprehensive new features from user request.
+  Task 1: (P0) Implement Customer Ordering System (Phase 1)
 
  Task Detail:
-  - Task 1: Complete New Feature Implementation
-     - Where to resume: 
-        1. **Backend:** Resume editing . The agent was just after adding  to the  model. The immediate next step is to continue defining the required Pydantic models for Stock Management, Cash Shortages, and Email Recipients, and then implement all the associated API endpoints.
-        2. **Frontend:** Once the backend is complete and tested, update the frontend to support all the new features (UI for shortage tracking, stock management screens, report filters, etc.).
-     - What will be achieved with this? This will deliver the full set of operational tools requested by the user, making the app a complete solution for their business.
+  - Task 1: 
+     - Where to resume: The agent has added a large block of backend code for the ordering system to . The next steps are:
+        1.  Finalize and review the new backend models and endpoints for correctness and completeness.
+        2.  Write comprehensive backend tests () to validate the new ordering API, ensuring it respects the existing multi-tenancy rules.
+        3.  Start building the new frontend screens as per the user-approved plan: Customer Registration, Company Selection, Product Listing/Ordering, and Order Confirmation.
+        4.  Implement the native Share sheet functionality on the Order Confirmation screen.
+     - What will be achieved with this? This will deliver the core functionality for customers to register and place their first orders, establishing the foundation of the new two-sided ecosystem.
      - Status: IN PROGRESS
      - Should Test frontend/backend/both after fix? both
-     - Blocked on something: Issue 1 (Backend Broken Mid-Update).
+     - Blocked on something: None
 
 **Upcoming and Future Tasks**
     Upcoming Tasks:
-    - **(P0) Reporting Export Fix:** Implement PDF and Google Sheets export options, and add filters (Date, Route, Driver, etc.) to the export functionality. (Part of the in-progress task).
-    - **(P0) Cash Shortage Tracking:** Add UI fields on the sales screen and logic in the backend to track short payments. (Part of the in-progress task).
-    - **(P0) Automatic Invoice Number:** Implement the backend logic to generate unique invoice numbers and display them on the frontend. (Part of the in-progress task).
-    - **(P1) Stock Management Module:** Create the full UI/UX for Stock Receiving, Stock Take, and Stock Adjustments within the Admin section. (Part of the in-progress task).
-    - **(P2) Email Report Management:** Create a UI in the Admin settings for managing email recipients for automated reports. (Part of the in-progress task).
+    - **(P0) Order Management Dashboard (Phase 2):** Create a new dashboard for distributors to view, filter (by route, date, customer), and adjust incoming customer orders.
+    - **(P1) Customer Order Status Screen (Phase 3):** Build a screen for customers to view their order history and track the status of each order (e.g., Pending, Confirmed, Adjusted, Out for Delivery).
+    - **(P2) Order Adjustment Notifications (Phase 4):** Implement the logic for distributors to adjust an order (e.g., due to stock shortages) and automatically notify the customer via an in-app notification and WhatsApp.
 
     Future Tasks:
-    - There are no other future tasks mentioned beyond the comprehensive list currently being implemented.
+    - **(P1) Order Cut-Off System:** Implement the full cut-off time logic, including distributor configuration, preventing late orders, and sending automated reminders to customers.
+    - **(P2) Online Payments & Credit Accounts:** Integrate a payment gateway and a system for managing customer credit limits.
+    - **(P3) Delivery Tracking & Route Optimization:** Add live GPS tracking for deliveries and tools for optimizing delivery routes.
 
 **Completed work in this session**
-- **Feature: Vehicle Management:** Implemented full CRUD for vehicles, linked them to daily routes, and displayed vehicle info on the driver's home screen.
-- **Feature: Concurrent & Continue Route Flow:** Fixed the Continue Route functionality, allowing drivers to resume specific routes. Added an End Route button.
-- **Feature: Crates Tracking:** Implemented tracking for crates dropped off and collected during a sale.
-- **Feature: Customer-Specific Pricing:** The app now fetches and uses special prices for specific customers during sales entry.
-- **Feature: Enhanced Excel Export:** Replaced the basic CSV export with a formatted, multi-sheet Excel report using .
-- **Bugfix: Login Navigation:** Resolved a persistent issue where the login button did not navigate on the web preview by replacing  with .
-- **Bugfix: Route Customer Loading:** Fixed a bug where customers would not appear on the route tab.
-- **Deployment Prep:** Removed hardcoded secrets and database names from the code, replacing them with environment variables to pass deployment checks.
-
-**Earlier issues found/mentioned but not fixed**
-   - The primary unfixed issue is the root cause of the **recurring blank app preview** (Issue 3 in the list above). While the agent found workarounds, the underlying instability persists and is a significant source of user friction.
-
-**Known issue recurrence from previous fork**
-  - None noted from the previous summary.
+- **Multi-Tenancy & Data Isolation:**
+  - Implemented a  field across all major data models (, , , , , , ).
+  - Scoped all backend API endpoints to ensure a logged-in user can only access data belonging to their own company. This was a massive and critical update to .
+  - Created a Register a New Company onboarding flow ().
+- **Report Downloads Fixed:**
+  - Re-implemented the report download functionality in  to be robust and reliable.
+  - Uses  and  to correctly handle authenticated downloads on mobile, while preserving web download behavior.
+- **UI/UX Fixes & Enhancements:**
+  - Fixed misaligned Quick Actions icons on the home screen () by implementing a proper grid layout.
+  - Improved PDF report layout to landscape with wider columns to prevent text truncation.
+  - Implemented multiple branding updates, replacing the app name and logo across all screens (, , , ).
+- **Vehicle Inspection Feature:**
+  - Created a comprehensive, categorized vehicle inspection checklist on the  screen.
+  - Updated backend to store detailed inspection data, including comments.
+  - Added a Vehicle Inspection sheet to the exported Excel report.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
+- **Backend:** Python, FastAPI, MongoDB
 - **Frontend:** React Native, Expo, Expo Router, TypeScript
-- **Backend:** Python, FastAPI
-- **Database:** MongoDB
-- **Authentication:** JWT (JSON Web Tokens) with role-based access control.
-- **Reporting:**  for Excel.  is planned for PDF generation.
+- **Multi-Tenancy:** Data isolation is enforced at the API level by filtering all database queries by a  retrieved from the user's JWT token.
+- **File Downloads (Mobile):** Using  to download files from authenticated endpoints and  to open the native share sheet.
+- **State Management:** React Context () for user authentication. React state () for local component state.
 
 **key DB schema**
-  - **users:** {username, hashed_password, role, ...}
-  - **products:** {name, category, price, ...}
-  - **customers:** {name, location, ...}, to be updated with **customer_specific_prices**: [{product_id, price}]
-  - **routes:** {name, description, ...}
-  - **daily_routes:** {driver_id, route_id, vehicle_id, status, ...}
-  - **vehicles:** {name, registration_number, ...}
-  - **sales:** to be updated with {invoice_number, cash_received, shortage_amount}
-  - **(New) stock_items:** {product_id, quantity}
-  - **(New) stock_log:** {product_id, quantity, type, reason, user_id, timestamp}
-  - **(New) email_recipients:** {email, report_type}
-
-**changes in tech stack**
-  - ****: Attempted to be added for PDF generation.
-  - ****: Added for advanced Excel report generation.
+  - **companies:** {_id, name, contact_person, phone, email, address}
+  - **users:** {..., **company_id: ObjectId**}
+  - **products:** {..., **company_id: ObjectId**}
+  - **routes:** {..., **company_id: ObjectId**}
+  - **customers:** {..., **company_id: ObjectId**}
+  - **sales:** {..., **company_id: ObjectId**}
+  - **daily_routes:** {..., **company_id: ObjectId**, vehicle_inspection: dict}
+  - **vehicles:** {..., **company_id: ObjectId**}
+  - **orders:** {_id, order_number, **company_id**, **customer_id**, status, total_amount, order_date, delivery_date} (NEW)
+  - **order_items:** {_id, **order_id**, product_id, quantity, price} (NEW)
 
 **All files of reference**
-- ****: The main backend application. It is currently broken mid-update while adding a large number of new features.
-- ****: The sales entry screen. Needs a UI fix for the quantity display and will require significant updates for cash shortage tracking.
-- ****: The reports screen. The Excel export logic is in the backend, but this screen will need UI for new export options (PDF) and filtering.
-- ****: The admin dashboard. Will need new tabs/sections for Stock Management and Email Recipient Management.
-- ****: The frontend API service. Will need to be updated with methods for all the new backend endpoints.
-
-**Areas that need refactoring**:
--  is becoming excessively large. The new features (Stock Management, Reporting) should ideally be broken out into their own FastAPI  files to improve maintainability.
-
-**key api endpoints**
-- : (PUT) Generates an Excel report. To be updated for PDF/other formats and filtering.
-- **(New/Planned)** : To record incoming stock.
-- **(New/Planned)** : To make stock adjustments.
-- **(New/Planned)** : To perform a stock take.
-- **(New/Planned)** : CRUD for managing report recipients.
-- **(New/Planned)** : (POST) To be updated to handle shortage calculation and invoice number generation.
+- ****: The most critical file. It contains all business logic. It was heavily modified to implement strict multi-tenancy and is now being further modified to add the entire customer ordering system.
+- ****: Contains the new, robust implementation for downloading authenticated files (PDF/Excel) on both web and mobile. A key reference for future file-handling tasks.
+- ****: The new multi-step onboarding screen for company registration.
+- ****: Contains the enhanced vehicle inspection checklist UI.
+- ****: The home screen, where the Quick Actions UI was fixed.
 
 **Critical Info for New Agent**
-- **Top Priority:** The user has provided a large, detailed list of requirements in their last message (Chat Message 583). Your immediate goal is to fix the broken backend and then systematically implement every item on that list.
-- **Backend is Broken:** You must start by fixing . The  installation failed, and the file was being edited.
-- **Guide User to Expo Go:** The user has repeatedly had issues with the web preview being blank. Proactively guide them to use the **Expo Go app** for testing, explaining that it provides the most reliable and up-to-date view of the application on a real device.
-- **Incremental Confirmation:** Given the large scope of work, implement one feature at a time (e.g., 1. Backend for shortages, 2. Frontend for shortages, 3. Test, 4. Confirm with user) before moving to the next. This will provide better feedback loops.
+- **PRIORITY:** Your immediate goal is to complete **Phase 1 of the Customer Ordering System**. Follow the user-approved plan: finish the backend, test it thoroughly, then build the frontend screens.
+- **MULTI-TENANCY IS KING:** All new features, especially the ordering system, MUST strictly adhere to the company-based data isolation. Every new database query must be filtered by . The backend tests for this are in  and should be expanded upon.
+- **NATIVE SHARING:** The user specifically requested using the native Share sheet for order confirmations. You must use a library like  to achieve this, as you did for the report downloads.
+- **WEB & MOBILE PARITY:** The user expects all features to work on both the web preview (for management) and the mobile Expo Go app (for drivers/customers). Test both platforms.
+- **DON'T BREAK WHAT WORKS:** The user is very happy with the current state of the app. Be careful not to introduce regressions. Test existing functionality after implementing new features.
 
 **documents created in this job**
--  was updated several times.
+-  was heavily updated with new backend tests for multi-tenancy.
 
 **Last 10 User Messages and any pending HUMAN messages** 
- - **Msg 583 (LATEST):** Provided a very detailed list of 7 major requirements including reporting fixes, cash shortage tracking, automatic invoice numbers, a UI bug fix, a full stock management module, and email recipient management. (PENDING - Work just started)
- - **Msg 576:** Asked the agent to call the Deployer Agent and run a health check. (COMPLETED)
- - **Msg 553:** Requested that the Excel reports be made more attractive, interactive, and have a good layout. (COMPLETED - Agent implemented an enhanced export)
- - **Msg 547:** Asked the agent to test via the Expo Go app. (COMPLETED - Agent provided instructions)
- - **Msg 539:** Reported that the downloaded APK is not the same as the working app preview. (ADDRESSED - Agent explained the difference between static builds and live previews)
- - **Msg 508:** Reported that nothing is reflecting on the app preview. (ADDRESSED - Agent troubleshooted and confirmed the app was working)
- - **Msg 429:** Provided a list of features: fix continue route, admin-only route deletion, driver end-route, automatic timestamps, email reports, and customer-specific pricing. (COMPLETED)
- - **Msg 414:** continue where you left off (COMPLETED)
- - **Msg 379:** Asked the agent to call the Deployer Agent and run a health check. (COMPLETED - but led to a new set of fixes)
- - **Msg 340:** Asked the agent to thoroughly check if the app is fully functional. (COMPLETED - Agent performed a full-stack test)
+ - **Msg 576:** (PENDING) Please proceed with phase 1, and also use the native Share sheet for whatsapp. Please ensure all these new features work well. Also ensure companies can view also have a fully functional web browser access via a pc or laptop, as how it currently works, Just make sure all works perfectly and is tested. - **This is the primary directive for the next agent.**
+ - **Msg 574:** (Acknowledged) Agent presents a detailed, multi-phase plan for the customer ordering system.
+ - **Msg 571:** (Addressed) User provides the large and detailed feature request for the Customer Ordering System and Order Cut-Off system.
+ - **Msg 462:** (Completed) User requests a final name change to Mzansi FMCG Tracker, provides a new logo, and re-emphasizes the need for strict data isolation and concurrent user support.
+ - **Msg 461:** (Completed) Agent provides the web preview link and login credentials to the user.
+ - **Msg 460:** (Addressed) User requests the web-based link.
+ - **Msg 457:** (Addressed) Agent provides guidance on how to build an APK using EAS Build.
+ - **Msg 456:** (Addressed) User asks for a new deployment so i can download the apk.
+ - **Msg 400:** (Completed) User asks to test the Register a New Company feature and wants to see the layout of the downloaded reports.
+ - **Msg 399:** (Partially Addressed) Agent provides a summary of the implemented multi-tenancy features and asks for the next steps.
 
 **Project Health Check:**
-- **Broken:** The backend is non-functional due to an incomplete feature implementation in  and a failed package installation ().
-- **Mocked:** No mocked data. A  endpoint is used to populate the database.
+- **Stable:** The existing application is stable and functional. There are no known bugs or broken features.
+- **In Development:** The project is in the middle of a major new feature implementation (Customer Ordering System).
 
 **3rd Party Integrations**
-- : For creating formatted Excel reports.
--  (pending installation): For creating PDF reports.
+- : Used for Excel report generation.
+- : Used for PDF report generation.
+- : Used for handling file downloads on mobile.
+- : Used for opening the native share functionality on mobile.
 
 **Testing status**
-  - Testing agent used after significant changes: YES. Both  and  were used extensively throughout the session.
-  - Troubleshoot agent used after agent stuck in loop: YES. It was used to diagnose the blank screen issue.
-  - Test files created: []
-  - Known regressions: None currently known, but the backend is broken.
+  - Testing agent used after significant changes: YES,  was used to create and pass 9 comprehensive tests for the multi-tenancy data isolation logic.
+  - Troubleshoot agent used after agent stuck in loop: NO
+  - Test files created: [] (Tests are run by the agent in-memory, but the test definitions are in )
+  - Known regressions: [none]
 
 **Credentials to test flow:**
-After seeding the database ():
-- **Admin:**  / PIN 
-- **Driver:**  / PIN 
+Seed the database first via the Load Demo Data button on the login screen.
+- **Default Admin:**  / PIN 
+- **Default Driver:**  / PIN 
+New companies can be registered via the Register a New Company flow.
 
 **What agent forgot to execute**
-The agent did not forget to execute anything; it was in the middle of executing a very large user request when the session ended. All pending items are captured in the Upcoming Tasks and In progress Task List sections.
+The previous agent was in the middle of a large task and had not forgotten anything. It was following the user-approved plan.
 
 </analysis>

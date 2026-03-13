@@ -308,6 +308,17 @@ export default function HomeScreen() {
                 <Text style={styles.actionText}>Stock</Text>
               </TouchableOpacity>
             )}
+            {(user?.role === 'admin' || user?.role === 'manager') && (
+              <TouchableOpacity
+                style={styles.actionCard}
+                onPress={() => router.push('/orders-management')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: '#1E2E3B' }]}>
+                  <Ionicons name="cart" size={24} color="#F97316" />
+                </View>
+                <Text style={styles.actionText}>Orders</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.actionCard}
               onPress={() => router.push('/(tabs)/profile')}

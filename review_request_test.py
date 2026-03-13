@@ -17,7 +17,7 @@ import sys
 from datetime import datetime
 
 # Backend URL from frontend/.env
-BASE_URL = "https://route-sales-ops.preview.emergentagent.com/api"
+BASE_URL = "https://order-system-preview-2.preview.emergentagent.com/api"
 
 # Credentials from review request
 ADMIN_PHONE = "0800000001"
