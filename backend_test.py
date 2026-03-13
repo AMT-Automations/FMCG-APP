@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
-Backend Testing Suite for Mzansi Distribution Tracker
-Testing new features as per review request:
-1. Company Setup (Multi-tenancy)
-2. Login with company
-3. Excel Export
-4. PDF Export
+Mzansi FMCG Tracker Multi-Tenancy Backend Test
+Test company-scoped data isolation and multi-tenancy functionality
 """
 
 import requests
@@ -13,356 +9,410 @@ import json
 import sys
 from datetime import datetime
 
-# Backend URL - using the production URL from frontend env
-BASE_URL = "https://route-sales-ops.preview.emergentagent.com/api"
+# Backend URL from frontend environment
+BACKEND_URL = "https://route-sales-ops.preview.emergentagent.com/api"
 
-class Colors:
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
-    BOLD = '\033[1m'
-    END = '\033[0m'
-
-def print_test_header(title):
-    print(f"\n{Colors.BLUE}{Colors.BOLD}{'='*60}")
-    print(f"🧪 TESTING: {title}")
-    print(f"{'='*60}{Colors.END}")
-
-def print_success(message):
-    print(f"{Colors.GREEN}✅ {message}{Colors.END}")
-
-def print_error(message):
-    print(f"{Colors.RED}❌ {message}{Colors.END}")
-
-def print_warning(message):
-    print(f"{Colors.YELLOW}⚠️  {message}{Colors.END}")
-
-def print_info(message):
-    print(f"{Colors.CYAN}ℹ️  {message}{Colors.END}")
-
-def make_request(method, endpoint, headers=None, data=None, expected_status=200):
-    """Make HTTP request and return response"""
-    url = f"{BASE_URL}{endpoint}"
-    print_info(f"{method} {url}")
-    
-    try:
-        if method == "GET":
-            response = requests.get(url, headers=headers)
-        elif method == "POST":
-            response = requests.post(url, headers=headers, json=data)
-        elif method == "PUT":
-            response = requests.put(url, headers=headers, json=data)
-        elif method == "DELETE":
-            response = requests.delete(url, headers=headers)
+class MultiTenancyTester:
+    def __init__(self):
+        self.results = []
+        self.company_a_token = None
+        self.company_b_token = None
+        self.company_a_id = None
+        self.company_b_id = None
         
-        print_info(f"Status: {response.status_code}")
+    def log_result(self, test_name, status, details):
+        """Log test results"""
+        result = {
+            "test": test_name,
+            "status": status,
+            "details": details,
+            "timestamp": datetime.now().isoformat()
+        }
+        self.results.append(result)
+        status_icon = "✅" if status == "PASS" else "❌"
+        print(f"{status_icon} {test_name}: {details}")
         
-        if response.status_code == expected_status:
+    def make_request(self, method, endpoint, data=None, headers=None):
+        """Make HTTP request with error handling"""
+        url = f"{BACKEND_URL}{endpoint}"
+        try:
+            if headers is None:
+                headers = {"Content-Type": "application/json"}
+            
+            if method == "GET":
+                response = requests.get(url, headers=headers, timeout=30)
+            elif method == "POST":
+                response = requests.post(url, json=data, headers=headers, timeout=30)
+            elif method == "PUT":
+                response = requests.put(url, json=data, headers=headers, timeout=30)
+            elif method == "DELETE":
+                response = requests.delete(url, headers=headers, timeout=30)
+            
             return response
-        else:
-            print_error(f"Expected {expected_status}, got {response.status_code}")
-            print_error(f"Response: {response.text}")
-            return None
-            
-    except Exception as e:
-        print_error(f"Request failed: {str(e)}")
-        return None
-
-def test_seed_data():
-    """Step 0: Seed data first as specified"""
-    print_test_header("STEP 0: SEED ALL DATA")
+        except Exception as e:
+            return f"ERROR: {str(e)}"
     
-    response = make_request("POST", "/seed-all")
-    if response:
-        print_success("✅ Data seeded successfully")
-        return True
-    else:
-        print_error("❌ Failed to seed data")
-        return False
-
-def test_company_setup():
-    """Test 1: Company Setup (Multi-tenancy)"""
-    print_test_header("TEST 1: COMPANY SETUP (MULTI-TENANCY)")
-    
-    company_data = {
-        "company": {
-            "name": "Test Distribution Co",
-            "contact_person": "John Test",
-            "phone": "0111234567",
-            "email": "test@test.co.za",
-            "address": "123 Test Street, Johannesburg"
-        },
-        "admin_name": "John Admin",
-        "admin_phone": "0991112222",
-        "admin_pin": "5678"
-    }
-    
-    print_info("Testing company setup with provided data...")
-    print_info(f"Company: {company_data['company']['name']}")
-    print_info(f"Admin: {company_data['admin_name']} ({company_data['admin_phone']})")
-    
-    response = make_request("POST", "/companies/setup", data=company_data, expected_status=200)
-    
-    if response:
-        try:
-            result = response.json()
-            print_success(f"✅ Company setup successful!")
-            print_success(f"   Company ID: {result.get('company_id')}")
-            print_success(f"   Company Name: {result.get('company_name')}")
-            print_success(f"   Admin Phone: {result.get('admin_phone')}")
-            
-            # Verify required fields are present
-            if result.get('company_id') and result.get('company_name'):
-                print_success("✅ VERIFICATION: Response includes company_id and company_name as required")
-                return {
-                    "success": True,
-                    "company_id": result.get('company_id'),
-                    "company_name": result.get('company_name'),
-                    "admin_phone": company_data['admin_phone'],
-                    "admin_pin": company_data['admin_pin']
-                }
-            else:
-                print_error("❌ VERIFICATION: Missing required fields in response")
-                return {"success": False}
-                
-        except json.JSONDecodeError:
-            print_error("❌ Invalid JSON response")
-            return {"success": False}
-    else:
-        print_error("❌ Company setup failed")
-        return {"success": False}
-
-def test_login_with_company(admin_phone, admin_pin):
-    """Test 2: Login with company"""
-    print_test_header("TEST 2: LOGIN WITH COMPANY")
-    
-    login_data = {
-        "phone": admin_phone,
-        "pin": admin_pin
-    }
-    
-    print_info(f"Testing login with new admin credentials...")
-    print_info(f"Phone: {admin_phone}, PIN: {admin_pin}")
-    
-    response = make_request("POST", "/auth/login", data=login_data, expected_status=200)
-    
-    if response:
-        try:
-            result = response.json()
-            print_success(f"✅ Login successful!")
-            print_success(f"   Token: {result.get('token', '')[:50]}...")
-            print_success(f"   User ID: {result.get('user', {}).get('id')}")
-            print_success(f"   User Name: {result.get('user', {}).get('name')}")
-            print_success(f"   User Role: {result.get('user', {}).get('role')}")
-            
-            # Verify company field is present
-            company_info = result.get('company')
-            if company_info:
-                print_success(f"✅ VERIFICATION: Company field present in response")
-                print_success(f"   Company Name: {company_info.get('name')}")
-                print_success(f"   Company ID: {company_info.get('id')}")
-                
-                return {
-                    "success": True,
-                    "token": result.get('token'),
-                    "user": result.get('user'),
-                    "company": company_info
-                }
-            else:
-                print_error("❌ VERIFICATION: Company field missing from login response")
-                return {"success": False}
-                
-        except json.JSONDecodeError:
-            print_error("❌ Invalid JSON response")
-            return {"success": False}
-    else:
-        print_error("❌ Login failed")
-        return {"success": False}
-
-def test_admin_login():
-    """Login as default admin to test exports"""
-    print_test_header("ADMIN LOGIN FOR EXPORT TESTING")
-    
-    login_data = {
-        "phone": "0800000001",
-        "pin": "0000"
-    }
-    
-    print_info("Logging in as default admin for export testing...")
-    print_info(f"Phone: {login_data['phone']}, PIN: {login_data['pin']}")
-    
-    response = make_request("POST", "/auth/login", data=login_data, expected_status=200)
-    
-    if response:
-        try:
-            result = response.json()
-            print_success(f"✅ Admin login successful!")
-            print_success(f"   User: {result.get('user', {}).get('name')} ({result.get('user', {}).get('role')})")
-            
-            return {
-                "success": True,
-                "token": result.get('token'),
-                "user": result.get('user')
-            }
-        except json.JSONDecodeError:
-            print_error("❌ Invalid JSON response")
-            return {"success": False}
-    else:
-        print_error("❌ Admin login failed")
-        return {"success": False}
-
-def test_excel_export(auth_token):
-    """Test 3: Excel Export"""
-    print_test_header("TEST 3: EXCEL EXPORT")
-    
-    headers = {
-        "Authorization": f"Bearer {auth_token}",
-        "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    }
-    
-    print_info("Testing Excel export with authorization header...")
-    
-    response = make_request("GET", "/reports/export/excel", headers=headers, expected_status=200)
-    
-    if response:
-        # Check content type
-        content_type = response.headers.get('content-type', '')
-        print_info(f"Content-Type: {content_type}")
+    def test_1_seed_demo_data(self):
+        """Test 1: Seed demo data first"""
+        print("\n=== Test 1: Seed Demo Data ===")
         
-        # Check if it's Excel format
-        if 'xlsx' in content_type or 'spreadsheetml' in content_type:
-            print_success("✅ VERIFICATION: Returns 200 status with xlsx content-type")
+        response = self.make_request("POST", "/seed-all")
+        if isinstance(response, str):
+            self.log_result("Seed Demo Data", "FAIL", f"Request failed: {response}")
+            return False
             
-            # Check content length
-            content_length = len(response.content)
-            print_success(f"✅ Excel file generated: {content_length} bytes")
-            
-            return {"success": True, "file_size": content_length}
+        if response.status_code == 200:
+            self.log_result("Seed Demo Data", "PASS", "Demo data seeded successfully")
+            return True
         else:
-            print_error(f"❌ VERIFICATION: Wrong content type. Expected xlsx, got {content_type}")
-            return {"success": False}
-    else:
-        print_error("❌ Excel export failed")
-        return {"success": False}
-
-def test_pdf_export(auth_token):
-    """Test 4: PDF Export"""
-    print_test_header("TEST 4: PDF EXPORT")
+            self.log_result("Seed Demo Data", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
+            return False
     
-    headers = {
-        "Authorization": f"Bearer {auth_token}",
-        "Accept": "application/pdf"
-    }
-    
-    print_info("Testing PDF export with authorization header...")
-    
-    response = make_request("GET", "/reports/export/pdf", headers=headers, expected_status=200)
-    
-    if response:
-        # Check content type
-        content_type = response.headers.get('content-type', '')
-        print_info(f"Content-Type: {content_type}")
+    def test_2_setup_company_a(self):
+        """Test 2: Setup Company A"""
+        print("\n=== Test 2: Setup Company A ===")
         
-        # Check if it's PDF format
-        if 'pdf' in content_type:
-            print_success("✅ VERIFICATION: Returns 200 status with pdf content-type")
+        company_a_data = {
+            "company": {
+                "name": "Alpha Distributors",
+                "contact_person": "John",
+                "phone": "0111111111"
+            },
+            "admin_name": "John Alpha", 
+            "admin_phone": "0771110001",
+            "admin_pin": "1111"
+        }
+        
+        response = self.make_request("POST", "/companies/setup", company_a_data)
+        if isinstance(response, str):
+            self.log_result("Setup Company A", "FAIL", f"Request failed: {response}")
+            return False
             
-            # Check content length and PDF header
-            content_length = len(response.content)
-            print_success(f"✅ PDF file generated: {content_length} bytes")
-            
-            # Verify PDF magic bytes
-            if response.content.startswith(b'%PDF'):
-                print_success("✅ Valid PDF format (starts with %PDF)")
-                return {"success": True, "file_size": content_length}
+        if response.status_code == 200:
+            data = response.json()
+            if "company_id" in data:
+                self.company_a_id = data["company_id"]
+                self.log_result("Setup Company A", "PASS", f"Company A created with ID: {self.company_a_id}")
+                return True
             else:
-                print_error("❌ Invalid PDF format (missing %PDF header)")
-                return {"success": False}
+                self.log_result("Setup Company A", "FAIL", f"No company_id in response: {data}")
+                return False
         else:
-            print_error(f"❌ VERIFICATION: Wrong content type. Expected pdf, got {content_type}")
-            return {"success": False}
-    else:
-        print_error("❌ PDF export failed")
-        return {"success": False}
+            self.log_result("Setup Company A", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
+            return False
+    
+    def test_3_login_company_a_admin(self):
+        """Test 3: Login as Company A admin"""
+        print("\n=== Test 3: Login Company A Admin ===")
+        
+        login_data = {
+            "phone": "0771110001",
+            "pin": "1111"
+        }
+        
+        response = self.make_request("POST", "/auth/login", login_data)
+        if isinstance(response, str):
+            self.log_result("Login Company A Admin", "FAIL", f"Request failed: {response}")
+            return False
+            
+        if response.status_code == 200:
+            data = response.json()
+            if "token" in data and "company" in data:
+                self.company_a_token = data["token"]
+                company_info = data["company"]
+                if company_info and company_info.get("name") == "Alpha Distributors":
+                    self.log_result("Login Company A Admin", "PASS", f"Login successful with company: {company_info['name']}")
+                    return True
+                else:
+                    self.log_result("Login Company A Admin", "FAIL", f"Company field missing or incorrect: {data}")
+                    return False
+            else:
+                self.log_result("Login Company A Admin", "FAIL", f"Missing token or company in response: {data}")
+                return False
+        else:
+            self.log_result("Login Company A Admin", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
+            return False
+    
+    def test_4_company_a_creates_product(self):
+        """Test 4: Company A creates a product"""
+        print("\n=== Test 4: Company A Creates Product ===")
+        
+        if not self.company_a_token:
+            self.log_result("Company A Create Product", "FAIL", "No Company A token available")
+            return False
+        
+        product_data = {
+            "name": "Alpha Bread",
+            "category": "BREAD", 
+            "unit_type": "loaf",
+            "price": 15.00
+        }
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.company_a_token}"
+        }
+        
+        response = self.make_request("POST", "/products", product_data, headers)
+        if isinstance(response, str):
+            self.log_result("Company A Create Product", "FAIL", f"Request failed: {response}")
+            return False
+            
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("name") == "Alpha Bread":
+                self.log_result("Company A Create Product", "PASS", f"Alpha Bread product created: {data.get('id')}")
+                return True
+            else:
+                self.log_result("Company A Create Product", "FAIL", f"Product creation failed: {data}")
+                return False
+        else:
+            self.log_result("Company A Create Product", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
+            return False
+    
+    def test_5_company_a_sees_only_their_product(self):
+        """Test 5: Company A sees only their product (NOT demo products)"""
+        print("\n=== Test 5: Company A Product Isolation ===")
+        
+        if not self.company_a_token:
+            self.log_result("Company A Product Isolation", "FAIL", "No Company A token available")
+            return False
+        
+        headers = {
+            "Authorization": f"Bearer {self.company_a_token}"
+        }
+        
+        response = self.make_request("GET", "/products", None, headers)
+        if isinstance(response, str):
+            self.log_result("Company A Product Isolation", "FAIL", f"Request failed: {response}")
+            return False
+            
+        if response.status_code == 200:
+            products = response.json()
+            alpha_bread_found = any(p.get("name") == "Alpha Bread" for p in products)
+            demo_products_found = any(p.get("name") in ["White Bread", "Brown Bread", "Maas (500ml)"] for p in products)
+            
+            if alpha_bread_found and not demo_products_found:
+                self.log_result("Company A Product Isolation", "PASS", f"Company A sees only their product: Alpha Bread (found {len(products)} products)")
+                return True
+            elif not alpha_bread_found:
+                self.log_result("Company A Product Isolation", "FAIL", f"Alpha Bread not found in products: {[p.get('name') for p in products]}")
+                return False
+            else:
+                self.log_result("Company A Product Isolation", "FAIL", f"Demo products visible to Company A: {[p.get('name') for p in products]}")
+                return False
+        else:
+            self.log_result("Company A Product Isolation", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
+            return False
+    
+    def test_6_setup_company_b(self):
+        """Test 6: Setup Company B"""
+        print("\n=== Test 6: Setup Company B ===")
+        
+        company_b_data = {
+            "company": {
+                "name": "Beta Logistics",
+                "contact_person": "Sara", 
+                "phone": "0222222222"
+            },
+            "admin_name": "Sara Beta",
+            "admin_phone": "0772220002", 
+            "admin_pin": "2222"
+        }
+        
+        response = self.make_request("POST", "/companies/setup", company_b_data)
+        if isinstance(response, str):
+            self.log_result("Setup Company B", "FAIL", f"Request failed: {response}")
+            return False
+            
+        if response.status_code == 200:
+            data = response.json()
+            if "company_id" in data:
+                self.company_b_id = data["company_id"]
+                self.log_result("Setup Company B", "PASS", f"Company B created with ID: {self.company_b_id}")
+                return True
+            else:
+                self.log_result("Setup Company B", "FAIL", f"No company_id in response: {data}")
+                return False
+        else:
+            self.log_result("Setup Company B", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
+            return False
+    
+    def test_7_login_company_b_admin(self):
+        """Test 7: Login as Company B admin"""
+        print("\n=== Test 7: Login Company B Admin ===")
+        
+        login_data = {
+            "phone": "0772220002",
+            "pin": "2222"
+        }
+        
+        response = self.make_request("POST", "/auth/login", login_data)
+        if isinstance(response, str):
+            self.log_result("Login Company B Admin", "FAIL", f"Request failed: {response}")
+            return False
+            
+        if response.status_code == 200:
+            data = response.json()
+            if "token" in data and "company" in data:
+                self.company_b_token = data["token"]
+                company_info = data["company"]
+                if company_info and company_info.get("name") == "Beta Logistics":
+                    self.log_result("Login Company B Admin", "PASS", f"Login successful with company: {company_info['name']}")
+                    return True
+                else:
+                    self.log_result("Login Company B Admin", "FAIL", f"Company field missing or incorrect: {data}")
+                    return False
+            else:
+                self.log_result("Login Company B Admin", "FAIL", f"Missing token or company in response: {data}")
+                return False
+        else:
+            self.log_result("Login Company B Admin", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
+            return False
+    
+    def test_8_company_b_sees_no_products(self):
+        """Test 8: Company B sees NO products (empty list)"""
+        print("\n=== Test 8: Company B Product Isolation ===")
+        
+        if not self.company_b_token:
+            self.log_result("Company B Product Isolation", "FAIL", "No Company B token available")
+            return False
+        
+        headers = {
+            "Authorization": f"Bearer {self.company_b_token}"
+        }
+        
+        response = self.make_request("GET", "/products", None, headers)
+        if isinstance(response, str):
+            self.log_result("Company B Product Isolation", "FAIL", f"Request failed: {response}")
+            return False
+            
+        if response.status_code == 200:
+            products = response.json()
+            if len(products) == 0:
+                self.log_result("Company B Product Isolation", "PASS", "Company B sees empty product list as expected")
+                return True
+            else:
+                self.log_result("Company B Product Isolation", "FAIL", f"Company B should see empty list but found: {[p.get('name') for p in products]}")
+                return False
+        else:
+            self.log_result("Company B Product Isolation", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
+            return False
+    
+    def test_9_pdf_excel_exports(self):
+        """Test 9: PDF/Excel exports work with authentication"""
+        print("\n=== Test 9: PDF/Excel Exports ===")
+        
+        if not self.company_a_token:
+            self.log_result("PDF/Excel Exports", "FAIL", "No Company A token available")
+            return False
+        
+        headers = {
+            "Authorization": f"Bearer {self.company_a_token}"
+        }
+        
+        # Test PDF export
+        pdf_response = self.make_request("GET", "/reports/export/pdf", None, headers)
+        pdf_success = False
+        if isinstance(pdf_response, str):
+            pdf_details = f"PDF request failed: {pdf_response}"
+        elif pdf_response.status_code == 200:
+            content_type = pdf_response.headers.get('content-type', '')
+            if 'application/pdf' in content_type:
+                pdf_success = True
+                pdf_details = f"PDF export success ({len(pdf_response.content)} bytes)"
+            else:
+                pdf_details = f"PDF wrong content-type: {content_type}"
+        else:
+            pdf_details = f"PDF status: {pdf_response.status_code}"
+        
+        # Test Excel export  
+        excel_response = self.make_request("GET", "/reports/export/excel", None, headers)
+        excel_success = False
+        if isinstance(excel_response, str):
+            excel_details = f"Excel request failed: {excel_response}"
+        elif excel_response.status_code == 200:
+            content_type = excel_response.headers.get('content-type', '')
+            if 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' in content_type or 'application/octet-stream' in content_type:
+                excel_success = True
+                excel_details = f"Excel export success ({len(excel_response.content)} bytes)"
+            else:
+                excel_details = f"Excel wrong content-type: {content_type}"
+        else:
+            excel_details = f"Excel status: {excel_response.status_code}"
+        
+        if pdf_success and excel_success:
+            self.log_result("PDF/Excel Exports", "PASS", f"Both exports working - {pdf_details}, {excel_details}")
+            return True
+        else:
+            self.log_result("PDF/Excel Exports", "FAIL", f"Export issues - {pdf_details}, {excel_details}")
+            return False
+    
+    def run_all_tests(self):
+        """Run all multi-tenancy tests"""
+        print("🚀 Starting Mzansi FMCG Tracker Multi-Tenancy Backend Tests")
+        print(f"Backend URL: {BACKEND_URL}")
+        print("=" * 60)
+        
+        tests = [
+            self.test_1_seed_demo_data,
+            self.test_2_setup_company_a, 
+            self.test_3_login_company_a_admin,
+            self.test_4_company_a_creates_product,
+            self.test_5_company_a_sees_only_their_product,
+            self.test_6_setup_company_b,
+            self.test_7_login_company_b_admin,
+            self.test_8_company_b_sees_no_products,
+            self.test_9_pdf_excel_exports
+        ]
+        
+        passed = 0
+        total = len(tests)
+        
+        for test in tests:
+            try:
+                if test():
+                    passed += 1
+            except Exception as e:
+                self.log_result(test.__name__, "FAIL", f"Exception: {str(e)}")
+        
+        print("\n" + "=" * 60)
+        print(f"📊 MULTI-TENANCY TEST RESULTS: {passed}/{total} tests passed")
+        
+        if passed == total:
+            print("✅ ALL MULTI-TENANCY TESTS PASSED - Company-scoped data isolation working perfectly")
+            return True
+        else:
+            print(f"❌ {total - passed} TESTS FAILED - Multi-tenancy issues found")
+            return False
+    
+    def get_summary(self):
+        """Get test results summary"""
+        passed = len([r for r in self.results if r["status"] == "PASS"])
+        failed = len([r for r in self.results if r["status"] == "FAIL"])
+        
+        summary = f"\n=== MULTI-TENANCY TEST SUMMARY ===\n"
+        summary += f"Total Tests: {len(self.results)}\n"
+        summary += f"Passed: {passed}\n"
+        summary += f"Failed: {failed}\n\n"
+        
+        if failed > 0:
+            summary += "FAILED TESTS:\n"
+            for result in self.results:
+                if result["status"] == "FAIL":
+                    summary += f"❌ {result['test']}: {result['details']}\n"
+        
+        return summary
 
 def main():
-    """Run all tests"""
-    print(f"{Colors.PURPLE}{Colors.BOLD}")
-    print("🚀 MZANSI DISTRIBUTION TRACKER - BACKEND TESTING")
-    print("📋 Testing New Features as per Review Request")
-    print(f"🌐 Backend URL: {BASE_URL}")
-    print(f"⏰ Test Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{Colors.END}")
+    """Main test execution"""
+    tester = MultiTenancyTester()
+    success = tester.run_all_tests()
     
-    results = {
-        "seed_data": False,
-        "company_setup": False,
-        "login_with_company": False,
-        "excel_export": False,
-        "pdf_export": False
-    }
+    print(tester.get_summary())
     
-    # Step 0: Seed data first
-    if test_seed_data():
-        results["seed_data"] = True
-    
-    # Test 1: Company Setup
-    company_result = test_company_setup()
-    if company_result.get("success"):
-        results["company_setup"] = True
-        
-        # Test 2: Login with new company admin
-        login_result = test_login_with_company(
-            company_result["admin_phone"], 
-            company_result["admin_pin"]
-        )
-        if login_result.get("success"):
-            results["login_with_company"] = True
-    
-    # Login as admin for export tests
-    admin_login = test_admin_login()
-    if admin_login.get("success"):
-        auth_token = admin_login["token"]
-        
-        # Test 3: Excel Export
-        excel_result = test_excel_export(auth_token)
-        if excel_result.get("success"):
-            results["excel_export"] = True
-        
-        # Test 4: PDF Export
-        pdf_result = test_pdf_export(auth_token)
-        if pdf_result.get("success"):
-            results["pdf_export"] = True
-    
-    # Print summary
-    print(f"\n{Colors.BOLD}{Colors.WHITE}")
-    print("=" * 60)
-    print("📊 TEST RESULTS SUMMARY")
-    print("=" * 60)
-    
-    for test_name, success in results.items():
-        status = f"{Colors.GREEN}✅ PASSED" if success else f"{Colors.RED}❌ FAILED"
-        print(f"{test_name.replace('_', ' ').title()}: {status}{Colors.WHITE}")
-    
-    passed = sum(results.values())
-    total = len(results)
-    success_rate = (passed / total) * 100
-    
-    print(f"\nOverall Success Rate: {passed}/{total} ({success_rate:.1f}%)")
-    
-    if success_rate == 100:
-        print(f"{Colors.GREEN}🎉 ALL TESTS PASSED! Backend is working perfectly.{Colors.END}")
-        sys.exit(0)
-    elif success_rate >= 80:
-        print(f"{Colors.YELLOW}⚠️  Most tests passed with some issues to investigate.{Colors.END}")
-        sys.exit(1)
-    else:
-        print(f"{Colors.RED}🚨 Multiple test failures detected. Backend needs attention.{Colors.END}")
-        sys.exit(2)
+    # Exit with appropriate code
+    sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
     main()

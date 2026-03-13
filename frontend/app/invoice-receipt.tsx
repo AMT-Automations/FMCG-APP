@@ -65,7 +65,7 @@ export default function InvoiceReceiptScreen() {
     if (shortageAmount > 0) {
       text += `Shortage: R${shortageAmount.toFixed(2)}\n`;
     }
-    text += `\nMzansi Distribution Tracker`;
+    text += `\nMzansi FMCG Tracker`;
 
     try {
       await Share.share({ message: text, title: `Invoice ${invoiceNumber}` });

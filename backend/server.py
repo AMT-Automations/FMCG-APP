@@ -46,7 +46,7 @@ if not db_name:
 db = client[db_name]
 
 # Create the main app
-app = FastAPI(title="Mzansi Distribution Tracker API")
+app = FastAPI(title="Mzansi FMCG Tracker API")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -417,6 +417,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+def get_company_filter(user: dict) -> dict:
+    """Get a MongoDB filter to scope data by the user's company_id.
+    Returns empty dict if user has no company (backward compatible with legacy data)."""
+    company_id = user.get("company_id")
+    if company_id:
+        return {"company_id": company_id}
+    return {}
+
 # ==================== AUTH ENDPOINTS ====================
 
 @api_router.post("/auth/register", response_model=UserResponse)
@@ -552,8 +560,10 @@ async def get_users(current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    # Exclude sensitive fields from user list
-    users = await db.users.find({}, {'pin_hash': 0}).to_list(500)
+    # Show only users from the same company
+    query = get_company_filter(current_user)
+    query["pin_hash"] = {"$exists": True}  # ensure it's a real user
+    users = await db.users.find(query, {'pin_hash': 0}).to_list(500)
     return [str_id(u) for u in users]
 
 @api_router.post("/users", response_model=UserResponse)
@@ -571,6 +581,7 @@ async def create_user(user: UserCreate, current_user: dict = Depends(get_current
         "pin_hash": hash_pin(user.pin),
         "role": user.role,
         "is_active": True,
+        "company_id": current_user.get("company_id"),
         "created_at": datetime.utcnow()
     }
     result = await db.users.insert_one(user_doc)
@@ -626,8 +637,9 @@ async def deactivate_user(user_id: str, current_user: dict = Depends(get_current
 # ==================== PRODUCT ENDPOINTS ====================
 
 @api_router.get("/products", response_model=List[ProductResponse])
-async def get_products():
-    products = await db.products.find().to_list(100)
+async def get_products(current_user: dict = Depends(get_current_user)):
+    query = get_company_filter(current_user)
+    products = await db.products.find(query).to_list(100)
     return [str_id(p) for p in products]
 
 @api_router.post("/products", response_model=ProductResponse)
@@ -636,6 +648,7 @@ async def create_product(product: ProductCreate, current_user: dict = Depends(ge
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
     
     product_doc = product.dict()
+    product_doc["company_id"] = current_user.get("company_id")
     result = await db.products.insert_one(product_doc)
     product_doc["_id"] = result.inserted_id
     return str_id(product_doc)
@@ -690,18 +703,22 @@ async def seed_products():
 # ==================== VEHICLE ENDPOINTS ====================
 
 @api_router.get("/vehicles", response_model=List[VehicleResponse])
-async def get_vehicles(include_inactive: bool = False):
-    query = {} if include_inactive else {"is_active": {"$ne": False}}
+async def get_vehicles(include_inactive: bool = False, current_user: dict = Depends(get_current_user)):
+    query = get_company_filter(current_user)
+    if not include_inactive:
+        query["is_active"] = {"$ne": False}
     vehicles = await db.vehicles.find(query).to_list(100)
     return [str_id(v) for v in vehicles]
 
 @api_router.get("/vehicles/available")
-async def get_available_vehicles():
+async def get_available_vehicles(current_user: dict = Depends(get_current_user)):
     """Get vehicles not currently in use on an active route"""
     today = datetime.utcnow().strftime("%Y-%m-%d")
     
-    # Get all vehicles
-    all_vehicles = await db.vehicles.find({"is_active": {"$ne": False}}).to_list(100)
+    # Get all vehicles for this company
+    query = get_company_filter(current_user)
+    query["is_active"] = {"$ne": False}
+    all_vehicles = await db.vehicles.find(query).to_list(100)
     
     # Get vehicles currently in use
     active_routes = await db.daily_routes.find({
@@ -731,6 +748,7 @@ async def create_vehicle(vehicle: VehicleCreate, current_user: dict = Depends(ge
     
     vehicle_doc = vehicle.dict()
     vehicle_doc["is_active"] = True
+    vehicle_doc["company_id"] = current_user.get("company_id")
     vehicle_doc["created_at"] = datetime.utcnow()
     
     result = await db.vehicles.insert_one(vehicle_doc)
@@ -786,8 +804,8 @@ async def seed_vehicles():
 # ==================== CUSTOMER ENDPOINTS ====================
 
 @api_router.get("/customers", response_model=List[CustomerResponse])
-async def get_customers(route_id: Optional[str] = None, include_inactive: bool = False):
-    query = {}
+async def get_customers(route_id: Optional[str] = None, include_inactive: bool = False, current_user: dict = Depends(get_current_user)):
+    query = get_company_filter(current_user)
     if route_id:
         query["route_id"] = route_id
     if not include_inactive:
@@ -796,7 +814,7 @@ async def get_customers(route_id: Optional[str] = None, include_inactive: bool =
     return [str_id(c) for c in customers]
 
 @api_router.get("/customers/{customer_id}", response_model=CustomerResponse)
-async def get_customer(customer_id: str):
+async def get_customer(customer_id: str, current_user: dict = Depends(get_current_user)):
     customer = await db.customers.find_one({"_id": ObjectId(customer_id)})
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -804,11 +822,11 @@ async def get_customer(customer_id: str):
 
 @api_router.post("/customers", response_model=CustomerResponse)
 async def create_customer(customer: CustomerCreate, current_user: dict = Depends(get_current_user)):
-    # Drivers can add customers on the fly
     customer_doc = customer.dict()
     customer_doc["is_active"] = True
     customer_doc["balance"] = 0.0
     customer_doc["created_by"] = current_user["id"]
+    customer_doc["company_id"] = current_user.get("company_id")
     customer_doc["created_at"] = datetime.utcnow()
     
     result = await db.customers.insert_one(customer_doc)
@@ -910,7 +928,8 @@ async def seed_customers():
 
 @api_router.get("/routes", response_model=List[RouteResponse])
 async def get_routes(current_user: dict = Depends(get_current_user)):
-    routes = await db.routes.find().to_list(50)
+    query = get_company_filter(current_user)
+    routes = await db.routes.find(query).to_list(50)
     result = []
     for route in routes:
         route = str_id(route)
@@ -927,6 +946,7 @@ async def create_route(route: RouteCreate, current_user: dict = Depends(get_curr
     route_doc = route.dict()
     route_doc["assigned_driver_id"] = None
     route_doc["assigned_driver_name"] = None
+    route_doc["company_id"] = current_user.get("company_id")
     route_doc["created_at"] = datetime.utcnow()
     
     result = await db.routes.insert_one(route_doc)
@@ -1051,6 +1071,7 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
         "delivery_status": sale.delivery_status,
         "notes": sale.notes,
         "is_voided": False,
+        "company_id": current_user.get("company_id"),
         "created_at": datetime.utcnow()
     }
     
@@ -1113,7 +1134,7 @@ async def get_sales(
     include_voided: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
-    query = {}
+    query = get_company_filter(current_user)
     if current_user["role"] == "driver":
         query["driver_id"] = current_user["id"]
     if route_id:
@@ -1282,6 +1303,7 @@ async def start_daily_route(data: DailyRouteStart, current_user: dict = Depends(
         "status": "active",
         "sales_count": 0,
         "total_collected": 0.0,
+        "company_id": current_user.get("company_id"),
         "started_at": datetime.utcnow()
     }
     
@@ -2254,7 +2276,7 @@ async def email_report(
             msg = MIMEMultipart()
             msg['From'] = email_config.get('sender_email')
             msg['To'] = ', '.join(request.recipient_emails)
-            msg['Subject'] = f"Mzansi Distribution - {request.report_type.capitalize()} Report ({date_str})"
+            msg['Subject'] = f"Mzansi FMCG Tracker - {request.report_type.capitalize()} Report ({date_str})"
             
             body = f"Dear Team,\n\nPlease find attached the {request.report_type} report for {date_str}.\n\nBest regards,\nDistribution Management System"
             msg.attach(MIMEText(body, 'plain'))
@@ -2788,7 +2810,7 @@ async def export_report_pdf(
     section_style = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=14, spaceBefore=20, spaceAfter=10, textColor=colors.HexColor('#1E293B'))
     
     # Header
-    elements.append(Paragraph("Mzansi Distribution Tracker", title_style))
+    elements.append(Paragraph("Mzansi FMCG Tracker", title_style))
     elements.append(Paragraph(f"Route Sales Report - {date_str}", subtitle_style))
     elements.append(Spacer(1, 15))
     
@@ -2898,7 +2920,7 @@ async def export_report_pdf(
     elements.append(Spacer(1, 30))
     footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, alignment=1, textColor=colors.HexColor('#94A3B8'))
     elements.append(Paragraph(f"Generated on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC", footer_style))
-    elements.append(Paragraph("Mzansi Distribution Tracker - Powered by Emergent", footer_style))
+    elements.append(Paragraph("Mzansi FMCG Tracker - Powered by Emergent", footer_style))
     
     doc.build(elements)
     buffer.seek(0)
@@ -3209,7 +3231,7 @@ async def get_support_info():
         "website": "www.mzafri.co.za",
         "support_email": "supportapp@mzafri.co.za",
         "contact_number": "+27 71 876 5600",
-        "app_name": "Mzansi Distribution Tracker",
+        "app_name": "Mzansi FMCG Tracker",
         "version": "1.0.0"
     }
 

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Mzansi Distribution Tracker",
-    "slug": "mzansi-distribution-tracker",
+    "name": "Mzansi FMCG Tracker",
+    "slug": "mzansi-fmcg-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

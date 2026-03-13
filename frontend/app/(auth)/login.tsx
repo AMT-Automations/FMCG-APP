@@ -111,7 +111,7 @@ export default function LoginScreen() {
                 resizeMode="cover"
               />
             </View>
-            <Text style={styles.appName}>Mzansi Distribution Tracker</Text>
+            <Text style={styles.appName}>Mzansi FMCG Tracker</Text>
           </View>
 
           {/* Form */}

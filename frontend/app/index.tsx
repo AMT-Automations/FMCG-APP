@@ -25,7 +25,7 @@ export default function Index() {
           style={styles.logo}
           resizeMode="cover"
         />
-        <Text style={styles.tagline}>Mzansi Distribution Tracker</Text>
+        <Text style={styles.tagline}>Mzansi FMCG Tracker</Text>
         <Text style={styles.subtitle}>Smart Routes. Stronger Distribution.</Text>
       </View>
       <ActivityIndicator size="large" color="#3B82F6" style={styles.loader} />

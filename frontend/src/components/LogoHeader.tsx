@@ -22,7 +22,7 @@ export function LogoHeader({ showText = true, size = 'medium' }: LogoHeaderProps
       {showText && (
         <View style={styles.textContainer}>
           <Text style={[styles.title, size === 'small' && styles.titleSmall]}>
-            Mzansi Distribution Tracker
+            Mzansi FMCG Tracker
           </Text>
         </View>
       )}

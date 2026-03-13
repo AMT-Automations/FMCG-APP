@@ -223,7 +223,7 @@ export default function ProfileScreen() {
             style={styles.menuItem}
             onPress={() => {
               Alert.alert(
-                'About Mzansi Distribution Tracker',
+                'About Mzansi FMCG Tracker',
                 `Version 1.0.0\n\n` +
                 `Developed for Mzafri Distribution\n\n` +
                 `📧 supportapp@mzafri.co.za\n` +
@@ -270,7 +270,7 @@ export default function ProfileScreen() {
 
         {/* App Info */}
         <View style={styles.appInfo}>
-          <Text style={styles.appName}>Mzansi Distribution Tracker</Text>
+          <Text style={styles.appName}>Mzansi FMCG Tracker</Text>
           <Text style={styles.appVersion}>Version 1.0.0</Text>
         </View>
       </ScrollView>
