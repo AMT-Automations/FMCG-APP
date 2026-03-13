@@ -3439,7 +3439,18 @@ async def update_route_schedule(route_id: str, schedule: DeliverySchedule, curre
         {"_id": oid},
         {"$set": {"delivery_schedule": schedule.dict()}}
     )
-    return {"message": "Delivery schedule updated"}
+    # Return the updated schedule with delivery info
+    delivery_info = get_next_delivery_day(
+        schedule.delivery_days,
+        schedule.cut_off_hours_before or 16
+    )
+    return {
+        "message": "Delivery schedule updated",
+        "route_id": route_id,
+        "route_name": route.get("name", ""),
+        "schedule": schedule.dict(),
+        "next_delivery": delivery_info
+    }
 
 @api_router.get("/routes/{route_id}/schedule")
 async def get_route_schedule(route_id: str, current_user: dict = Depends(get_current_user)):
@@ -3545,13 +3556,13 @@ async def create_order(order: OrderCreate, current_user: dict = Depends(get_curr
     else:
         delivery_info = None
     
-    # Check for duplicate orders (same customer, same day)
+    # Check for duplicate orders (same customer, same day - only block if pending/confirmed/adjusted/packed)
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     existing_order = await db.orders.find_one({
         "customer_id": current_user["id"],
         "company_id": order.company_id,
         "created_at": {"$gte": today_start},
-        "status": {"$nin": ["cancelled"]}
+        "status": {"$in": ["pending", "confirmed", "adjusted", "packed", "out_for_delivery"]}
     })
     if existing_order:
         raise HTTPException(status_code=400, detail="You already have an active order for today. Please wait or cancel the existing order.")
@@ -3682,7 +3693,9 @@ async def update_order_status(order_id: str, body: OrderStatusUpdate, current_us
         }
     )
     
-    return {"message": f"Order status updated to {status}"}
+    # Return the full updated order
+    updated_order = await db.orders.find_one({"_id": ObjectId(order_id)})
+    return str_id(updated_order)
 
 # --- Adjust Order (Distributor) ---
 @api_router.put("/orders/{order_id}/adjust")
@@ -3731,7 +3744,7 @@ async def adjust_order(order_id: str, adjustment: OrderAdjust, current_user: dic
         }
     )
     
-    return {"message": "Order adjusted successfully", "new_total": new_total}
+    return {"message": "Order adjusted successfully", "new_total": new_total, "order": str_id(await db.orders.find_one({"_id": ObjectId(order_id)}))}
 
 # --- Order Dashboard for Distributor ---
 @api_router.get("/orders/dashboard/summary")
