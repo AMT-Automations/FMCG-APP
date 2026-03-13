@@ -47,17 +47,24 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       console.log('Attempting login...');
+      let loggedInUser: any;
       if (isLogin) {
-        await login(phone, pin);
+        loggedInUser = await login(phone, pin);
         console.log('Login successful, navigating...');
       } else {
         await register(name, phone, pin);
         console.log('Registration successful, navigating...');
+        loggedInUser = { role: 'driver' }; // Default for register
       }
-      // Small delay to allow state to update, then navigate
+      // Route based on user role
       setTimeout(() => {
-        console.log('Navigating to tabs...');
-        router.replace('/(tabs)');
+        if (loggedInUser?.role === 'customer') {
+          console.log('Navigating to customer tabs...');
+          router.replace('/(customer-tabs)/shop');
+        } else {
+          console.log('Navigating to distributor tabs...');
+          router.replace('/(tabs)');
+        }
       }, 100);
     } catch (error: any) {
       console.error('Login error:', error);

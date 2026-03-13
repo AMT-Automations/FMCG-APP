@@ -22,7 +22,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (phone: string, pin: string) => Promise<void>;
+  login: (phone: string, pin: string) => Promise<User>;
   logout: () => Promise<void>;
   register: (name: string, phone: string, pin: string, role?: string) => Promise<void>;
 }
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = async (phone: string, pin: string) => {
+  const login = async (phone: string, pin: string): Promise<User> => {
     try {
       const response = await api.login(phone, pin);
       const { token: newToken, user: newUser } = response;
@@ -66,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       api.setToken(newToken);
       setToken(newToken);
       setUser(newUser);
+      return newUser;
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Login failed');
     }

@@ -139,6 +139,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool = True
     created_at: datetime
+    company_id: Optional[str] = None
     customer_profile: Optional[Dict[str, Any]] = None
 
 class LoginRequest(BaseModel):
