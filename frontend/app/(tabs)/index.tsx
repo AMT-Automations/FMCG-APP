@@ -319,6 +319,17 @@ export default function HomeScreen() {
                 <Text style={styles.actionText}>Orders</Text>
               </TouchableOpacity>
             )}
+            {user?.role === 'admin' && (
+              <TouchableOpacity
+                style={styles.actionCard}
+                onPress={() => router.push('/database-admin')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: '#1E1E3B' }]}>
+                  <Ionicons name="server" size={24} color="#A78BFA" />
+                </View>
+                <Text style={styles.actionText}>Database</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.actionCard}
               onPress={() => router.push('/(tabs)/profile')}

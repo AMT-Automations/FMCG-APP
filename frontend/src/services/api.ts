@@ -474,6 +474,14 @@ class ApiService {
     return response.data;
   }
 
+  // Generic request method for admin operations
+  async request(method: string, path: string, data?: any) {
+    const config: any = { method: method.toLowerCase(), url: path };
+    if (data) config.data = data;
+    const response = await this.client(config);
+    return response.data;
+  }
+
   async updateMyCompany(data: { name: string; contact_person: string; phone: string; email?: string; address?: string }) {
     const response = await this.client.put('/companies/mine', data);
     return response.data;

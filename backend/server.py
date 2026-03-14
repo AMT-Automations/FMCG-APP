@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, BackgroundTasks, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, Response
 from dotenv import load_dotenv
@@ -3831,6 +3831,127 @@ async def get_support_info():
 @api_router.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+# ==================== DATABASE ADMIN PANEL ====================
+
+def serialize_doc(doc: dict) -> dict:
+    """Deep serialize a MongoDB document for JSON"""
+    result = {}
+    for key, value in doc.items():
+        if key == "_id":
+            result["_id"] = str(value)
+            result["id"] = str(value)
+        elif isinstance(value, ObjectId):
+            result[key] = str(value)
+        elif isinstance(value, datetime):
+            result[key] = value.isoformat()
+        elif isinstance(value, dict):
+            result[key] = serialize_doc(value)
+        elif isinstance(value, list):
+            result[key] = [serialize_doc(v) if isinstance(v, dict) else str(v) if isinstance(v, (ObjectId, datetime)) else v for v in value]
+        else:
+            result[key] = value
+    return result
+
+@api_router.get("/admin/db/collections")
+async def list_collections(current_user: dict = Depends(get_current_user)):
+    """List all database collections with document counts"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    collections = await db.list_collection_names()
+    result = []
+    for coll_name in sorted(collections):
+        count = await db[coll_name].count_documents({})
+        result.append({"name": coll_name, "count": count})
+    return result
+
+@api_router.get("/admin/db/collections/{collection_name}")
+async def browse_collection(
+    collection_name: str,
+    skip: int = 0,
+    limit: int = 50,
+    company_filter: bool = True,
+    current_user: dict = Depends(get_current_user)
+):
+    """Browse documents in a collection with pagination"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    collections = await db.list_collection_names()
+    if collection_name not in collections:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    query = {}
+    if company_filter and collection_name not in ["companies"]:
+        cf = get_company_filter(current_user)
+        if cf:
+            query.update(cf)
+    
+    total = await db[collection_name].count_documents(query)
+    docs = await db[collection_name].find(query).sort("_id", -1).skip(skip).limit(limit).to_list(limit)
+    
+    serialized = []
+    for doc in docs:
+        serialized.append(serialize_doc(doc))
+    
+    return {"collection": collection_name, "total": total, "skip": skip, "limit": limit, "documents": serialized}
+
+@api_router.get("/admin/db/collections/{collection_name}/{doc_id}")
+async def get_document(collection_name: str, doc_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single document by ID"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        doc = await db[collection_name].find_one({"_id": ObjectId(doc_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid document ID")
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    return serialize_doc(doc)
+
+@api_router.put("/admin/db/collections/{collection_name}/{doc_id}")
+async def update_document(collection_name: str, doc_id: str, body: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Update a document's fields"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    update_data = {k: v for k, v in body.items() if k not in ["_id", "id"]}
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    try:
+        result = await db[collection_name].update_one(
+            {"_id": ObjectId(doc_id)},
+            {"$set": update_data}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Update failed: {str(e)}")
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    doc = await db[collection_name].find_one({"_id": ObjectId(doc_id)})
+    return serialize_doc(doc)
+
+@api_router.delete("/admin/db/collections/{collection_name}/{doc_id}")
+async def delete_document(collection_name: str, doc_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a document by ID"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        result = await db[collection_name].delete_one({"_id": ObjectId(doc_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid document ID")
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    return {"message": "Document deleted", "collection": collection_name, "id": doc_id}
 
 # Include the router in the main app
 app.include_router(api_router)
