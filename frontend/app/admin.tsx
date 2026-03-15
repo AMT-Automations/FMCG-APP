@@ -38,9 +38,18 @@ export default function AdminDashboard() {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
+  // Location data for route creation
+  const [provinces, setProvinces] = useState<string[]>([]);
+  const [districts, setDistricts] = useState<string[]>([]);
+  const [areas, setAreas] = useState<string[]>([]);
+
   // Form states
   const [userForm, setUserForm] = useState({ name: '', phone: '', pin: '', role: 'driver' });
-  const [routeForm, setRouteForm] = useState({ name: '', description: '', assigned_driver_id: '' });
+  const [routeForm, setRouteForm] = useState({ 
+    name: '', description: '', assigned_driver_id: '',
+    province: '', district: '', areas_covered: [] as string[],
+    delivery_days: [] as string[], cut_off_time: '16:00',
+  });
   const [customerForm, setCustomerForm] = useState({ 
     name: '', contact: '', location: '', payment_terms: 'cash', credit_limit: '', route_id: '' 
   });
@@ -149,33 +158,128 @@ export default function AdminDashboard() {
   };
 
   // Route Management
-  const openRouteModal = (routeItem?: any) => {
+  const openRouteModal = async (routeItem?: any) => {
     if (routeItem) {
       setEditingItem(routeItem);
       setRouteForm({
         name: routeItem.name,
         description: routeItem.description || '',
         assigned_driver_id: routeItem.assigned_driver_id || '',
+        province: routeItem.province || '',
+        district: routeItem.district || '',
+        areas_covered: routeItem.areas_covered || [],
+        delivery_days: routeItem.delivery_schedule?.delivery_days || [],
+        cut_off_time: routeItem.delivery_schedule?.cut_off_time || '16:00',
       });
+      // Load cascading data for existing province/district
+      if (routeItem.province) {
+        try {
+          const d = await api.getDistricts(routeItem.province);
+          setDistricts(d);
+          if (routeItem.district) {
+            const a = await api.getAreas(routeItem.province, routeItem.district);
+            setAreas(a);
+          }
+        } catch (err) { console.error(err); }
+      }
     } else {
       setEditingItem(null);
-      setRouteForm({ name: '', description: '', assigned_driver_id: '' });
+      setRouteForm({ 
+        name: '', description: '', assigned_driver_id: '',
+        province: '', district: '', areas_covered: [],
+        delivery_days: [], cut_off_time: '16:00',
+      });
+      setDistricts([]);
+      setAreas([]);
     }
+    // Load provinces
+    try {
+      const p = await api.getProvinces();
+      setProvinces(p);
+    } catch (err) { console.error(err); }
     setRouteModalVisible(true);
   };
+
+  const handleRouteProvinceChange = async (province: string) => {
+    setRouteForm(prev => ({ ...prev, province, district: '', areas_covered: [] }));
+    setAreas([]);
+    if (province) {
+      try {
+        const d = await api.getDistricts(province);
+        setDistricts(d);
+      } catch (err) { setDistricts([]); }
+    } else {
+      setDistricts([]);
+    }
+  };
+
+  const handleRouteDistrictChange = async (district: string) => {
+    setRouteForm(prev => ({ ...prev, district, areas_covered: [] }));
+    if (district && routeForm.province) {
+      try {
+        const a = await api.getAreas(routeForm.province, district);
+        setAreas(a);
+      } catch (err) { setAreas([]); }
+    } else {
+      setAreas([]);
+    }
+  };
+
+  const toggleRouteArea = (area: string) => {
+    setRouteForm(prev => {
+      const exists = prev.areas_covered.includes(area);
+      return {
+        ...prev,
+        areas_covered: exists
+          ? prev.areas_covered.filter((a: string) => a !== area)
+          : [...prev.areas_covered, area],
+      };
+    });
+  };
+
+  const toggleDeliveryDay = (day: string) => {
+    setRouteForm(prev => {
+      const exists = prev.delivery_days.includes(day);
+      return {
+        ...prev,
+        delivery_days: exists
+          ? prev.delivery_days.filter((d: string) => d !== day)
+          : [...prev.delivery_days, day],
+      };
+    });
+  };
+
+  const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   const saveRoute = async () => {
     if (!routeForm.name) {
       Alert.alert('Error', 'Route name is required');
       return;
     }
+    if (!routeForm.province) {
+      Alert.alert('Error', 'Please select a province');
+      return;
+    }
 
     setSaving(true);
     try {
+      const payload: any = {
+        name: routeForm.name,
+        description: routeForm.description,
+        assigned_driver_id: routeForm.assigned_driver_id || undefined,
+        province: routeForm.province,
+        district: routeForm.district,
+        areas_covered: routeForm.areas_covered,
+        delivery_schedule: {
+          delivery_days: routeForm.delivery_days,
+          cut_off_time: routeForm.cut_off_time,
+          cut_off_hours_before: parseInt(routeForm.cut_off_time.split(':')[0]) || 16,
+        },
+      };
       if (editingItem) {
-        await api.updateRoute(editingItem.id, routeForm);
+        await api.updateRoute(editingItem.id, payload);
       } else {
-        await api.createRoute(routeForm);
+        await api.createRoute(payload);
       }
       setRouteModalVisible(false);
       loadData();
@@ -518,11 +622,17 @@ export default function AdminDashboard() {
                   <View style={styles.cardInfo}>
                     <Text style={styles.cardTitle}>{r.name}</Text>
                     <Text style={styles.cardSubtitle}>
-                      {r.customer_count} customers
+                      {r.province || ''}{r.district ? ` • ${r.district}` : ''}
                       {r.assigned_driver_name && ` • ${r.assigned_driver_name}`}
                     </Text>
                   </View>
                 </View>
+                {r.areas_covered && r.areas_covered.length > 0 && (
+                  <Text style={styles.cardDescription}>Areas: {r.areas_covered.join(', ')}</Text>
+                )}
+                {r.delivery_schedule?.delivery_days?.length > 0 && (
+                  <Text style={styles.cardMeta}>Delivery: {r.delivery_schedule.delivery_days.join(', ')} (cutoff {r.delivery_schedule.cut_off_time || '16:00'})</Text>
+                )}
                 {r.description && (
                   <Text style={styles.cardDescription}>{r.description}</Text>
                 )}
@@ -733,12 +843,12 @@ export default function AdminDashboard() {
             </View>
             <ScrollView style={styles.modalBody}>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Name *</Text>
+                <Text style={styles.inputLabel}>Route Name *</Text>
                 <TextInput
                   style={styles.input}
                   value={routeForm.name}
                   onChangeText={(t) => setRouteForm({ ...routeForm, name: t })}
-                  placeholder="Route name"
+                  placeholder="e.g., Soweto & Surrounds"
                   placeholderTextColor="#64748B"
                 />
               </View>
@@ -753,6 +863,111 @@ export default function AdminDashboard() {
                   multiline
                 />
               </View>
+
+              {/* Province Dropdown */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Province *</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.roleOptions}>
+                    {provinces.map((p) => (
+                      <TouchableOpacity
+                        key={p}
+                        style={[styles.roleOption, routeForm.province === p && styles.roleOptionActive]}
+                        onPress={() => handleRouteProvinceChange(p)}
+                      >
+                        <Text style={[styles.roleOptionText, routeForm.province === p && styles.roleOptionTextActive]}>
+                          {p}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+
+              {/* District Dropdown */}
+              {districts.length > 0 && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>District</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={styles.roleOptions}>
+                      {districts.map((d) => (
+                        <TouchableOpacity
+                          key={d}
+                          style={[styles.roleOption, routeForm.district === d && styles.roleOptionActive]}
+                          onPress={() => handleRouteDistrictChange(d)}
+                        >
+                          <Text style={[styles.roleOptionText, routeForm.district === d && styles.roleOptionTextActive]}>
+                            {d}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Multi-Select Areas */}
+              {areas.length > 0 && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Areas Covered (select multiple)</Text>
+                  <View style={styles.roleOptions}>
+                    {areas.map((a) => (
+                      <TouchableOpacity
+                        key={a}
+                        style={[styles.roleOption, routeForm.areas_covered.includes(a) && { backgroundColor: '#10B981', borderColor: '#10B981' }]}
+                        onPress={() => toggleRouteArea(a)}
+                      >
+                        <Text style={[styles.roleOptionText, routeForm.areas_covered.includes(a) && styles.roleOptionTextActive]}>
+                          {routeForm.areas_covered.includes(a) ? '✓ ' : ''}{a}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {routeForm.areas_covered.length > 0 && (
+                    <Text style={{ color: '#10B981', fontSize: 12, marginTop: 6 }}>
+                      {routeForm.areas_covered.length} area(s) selected
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {/* Delivery Days */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Delivery Days</Text>
+                <View style={styles.roleOptions}>
+                  {DAYS_OF_WEEK.map((day) => (
+                    <TouchableOpacity
+                      key={day}
+                      style={[styles.roleOption, routeForm.delivery_days.includes(day) && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }]}
+                      onPress={() => toggleDeliveryDay(day)}
+                    >
+                      <Text style={[styles.roleOptionText, routeForm.delivery_days.includes(day) && styles.roleOptionTextActive]}>
+                        {day.slice(0, 3)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Cut-off Time */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Order Cut-off Time</Text>
+                <View style={styles.roleOptions}>
+                  {['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'].map((time) => (
+                    <TouchableOpacity
+                      key={time}
+                      style={[styles.roleOption, routeForm.cut_off_time === time && styles.roleOptionActive]}
+                      onPress={() => setRouteForm({ ...routeForm, cut_off_time: time })}
+                    >
+                      <Text style={[styles.roleOptionText, routeForm.cut_off_time === time && styles.roleOptionTextActive]}>
+                        {time}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Assigned Driver */}
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Assigned Driver</Text>
                 <View style={styles.driverOptions}>

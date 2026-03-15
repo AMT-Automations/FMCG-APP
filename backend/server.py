@@ -229,19 +229,32 @@ class VehicleResponse(BaseModel):
 class RouteCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    province: Optional[str] = None
+    district: Optional[str] = None
+    areas_covered: List[str] = []  # villages/towns/cities covered by this route
+    assigned_driver_id: Optional[str] = None
+    delivery_schedule: Optional[dict] = None
 
 class RouteUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     assigned_driver_id: Optional[str] = None
+    province: Optional[str] = None
+    district: Optional[str] = None
+    areas_covered: Optional[List[str]] = None
+    delivery_schedule: Optional[dict] = None
 
 class RouteResponse(BaseModel):
     id: str
     name: str
-    description: Optional[str]
+    description: Optional[str] = None
     customer_count: int = 0
     assigned_driver_id: Optional[str] = None
     assigned_driver_name: Optional[str] = None
+    province: Optional[str] = None
+    district: Optional[str] = None
+    areas_covered: List[str] = []
+    delivery_schedule: Optional[dict] = None
 
 class SaleItemCreate(BaseModel):
     product_id: str
@@ -3236,9 +3249,11 @@ class CustomerRegister(BaseModel):
     phone: str
     pin: str
     delivery_address: Optional[str] = None
-    location: Optional[str] = None
-    company_id: str  # which distributor they order from
-    route_id: str    # which route/area they fall under
+    province: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+    company_id: Optional[str] = None  # optional - marketplace model allows browsing all
+    route_id: Optional[str] = None    # optional - matched by location
 
 class DeliverySchedule(BaseModel):
     delivery_days: List[str] = []  # e.g. ["Monday", "Thursday"]
@@ -3271,6 +3286,321 @@ class OrderAdjust(BaseModel):
 ORDER_STATUSES = ["pending", "confirmed", "adjusted", "packed", "out_for_delivery", "delivered", "cancelled"]
 
 DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+# ==================== SOUTH AFRICA LOCATION DATA ====================
+SA_LOCATIONS = {
+    "Gauteng": {
+        "City of Johannesburg": ["Soweto", "Sandton", "Randburg", "Roodepoort", "Alexandra", "Midrand", "Johannesburg CBD", "Diepsloot", "Orange Farm"],
+        "City of Tshwane": ["Pretoria CBD", "Centurion", "Mamelodi", "Atteridgeville", "Soshanguve", "Hammanskraal", "Ga-Rankuwa"],
+        "Ekurhuleni": ["Germiston", "Boksburg", "Benoni", "Springs", "Brakpan", "Alberton", "Kempton Park", "Tembisa", "Katlehong"],
+        "Sedibeng": ["Vereeniging", "Vanderbijlpark", "Meyerton", "Heidelberg", "Evaton"],
+        "West Rand": ["Randfontein", "Krugersdorp", "Westonaria", "Carletonville", "Kagiso"],
+    },
+    "KwaZulu-Natal": {
+        "eThekwini": ["Durban CBD", "Umlazi", "Chatsworth", "Phoenix", "Pinetown", "KwaMashu", "Ntuzuma", "Inanda"],
+        "uMgungundlovu": ["Pietermaritzburg", "Richmond", "Howick", "Hilton", "Edendale"],
+        "King Cetshwayo": ["Richards Bay", "Empangeni", "Mtunzini", "Eshowe"],
+        "iLembe": ["KwaDukuza", "Stanger", "Ballito", "Mandeni", "Darnall"],
+        "Ugu": ["Port Shepstone", "Margate", "Scottburgh", "Hibberdene", "Umzinto"],
+        "uMkhanyakude": ["Hluhluwe", "Jozini", "Mtubatuba", "Mbazwana"],
+    },
+    "Western Cape": {
+        "City of Cape Town": ["Cape Town CBD", "Khayelitsha", "Mitchells Plain", "Gugulethu", "Nyanga", "Bellville", "Delft", "Langa", "Atlantis"],
+        "Cape Winelands": ["Stellenbosch", "Paarl", "Franschhoek", "Worcester", "Wellington"],
+        "Overberg": ["Hermanus", "Caledon", "Bredasdorp", "Swellendam"],
+        "Garden Route": ["George", "Knysna", "Plettenberg Bay", "Mossel Bay", "Oudtshoorn"],
+        "West Coast": ["Saldanha", "Langebaan", "Vredenburg", "Malmesbury"],
+    },
+    "Eastern Cape": {
+        "Nelson Mandela Bay": ["Port Elizabeth", "Uitenhage", "Despatch", "KwaNobuhle"],
+        "Buffalo City": ["East London", "Mdantsane", "King William's Town", "Bhisho"],
+        "OR Tambo": ["Mthatha", "Lusikisiki", "Port St Johns", "Libode", "Tsolo"],
+        "Amathole": ["Fort Beaufort", "Alice", "Stutterheim", "Keiskammahoek"],
+        "Chris Hani": ["Queenstown", "Cradock", "Cofimvaba", "Lady Frere"],
+    },
+    "Limpopo": {
+        "Capricorn": ["Polokwane", "Mankweng", "Seshego", "Lebowakgomo"],
+        "Vhembe": ["Thohoyandou", "Louis Trichardt", "Musina", "Malamulele"],
+        "Mopani": ["Tzaneen", "Phalaborwa", "Modjadjiskloof", "Giyani", "Nkowankowa"],
+        "Sekhukhune": ["Jane Furse", "Burgersfort", "Groblersdal", "Marble Hall"],
+        "Waterberg": ["Mokopane", "Lephalale", "Modimolle", "Bela-Bela", "Thabazimbi"],
+    },
+    "Mpumalanga": {
+        "Ehlanzeni": ["Nelspruit", "White River", "Hazyview", "Barberton", "Malelane", "Komatipoort"],
+        "Nkangala": ["Witbank", "Middelburg", "Secunda", "Standerton", "Bethal"],
+        "Gert Sibande": ["Ermelo", "Piet Retief", "Volksrust", "Amersfoort", "Balfour"],
+    },
+    "North West": {
+        "Bojanala Platinum": ["Rustenburg", "Brits", "Mogwase", "Sun City", "Phokeng"],
+        "Ngaka Modiri Molema": ["Mahikeng", "Lichtenburg", "Zeerust", "Coligny"],
+        "Dr Kenneth Kaunda": ["Klerksdorp", "Potchefstroom", "Orkney", "Stilfontein"],
+        "Dr Ruth Segomotsi Mompati": ["Vryburg", "Taung", "Christiana", "Schweizer-Reneke"],
+    },
+    "Free State": {
+        "Mangaung": ["Bloemfontein", "Botshabelo", "Thaba Nchu"],
+        "Fezile Dabi": ["Sasolburg", "Kroonstad", "Parys", "Heilbron"],
+        "Lejweleputswa": ["Welkom", "Virginia", "Odendaalsrus", "Hennenman"],
+        "Thabo Mofutsanyana": ["Bethlehem", "Harrismith", "QwaQwa", "Phuthaditjhaba"],
+    },
+    "Northern Cape": {
+        "Frances Baard": ["Kimberley", "Barkly West", "Warrenton"],
+        "John Taolo Gaetsewe": ["Kuruman", "Kathu", "Postmasburg"],
+        "ZF Mgcawu": ["Upington", "Keimoes", "Kakamas"],
+        "Namakwa": ["Springbok", "Port Nolloth", "Kleinsee"],
+    },
+}
+
+@api_router.get("/locations/provinces")
+async def get_provinces():
+    """Get all SA provinces"""
+    return list(SA_LOCATIONS.keys())
+
+@api_router.get("/locations/districts/{province}")
+async def get_districts(province: str):
+    """Get districts for a province"""
+    if province not in SA_LOCATIONS:
+        raise HTTPException(status_code=404, detail="Province not found")
+    return list(SA_LOCATIONS[province].keys())
+
+@api_router.get("/locations/areas/{province}/{district}")
+async def get_areas(province: str, district: str):
+    """Get areas/towns for a district"""
+    if province not in SA_LOCATIONS:
+        raise HTTPException(status_code=404, detail="Province not found")
+    if district not in SA_LOCATIONS[province]:
+        raise HTTPException(status_code=404, detail="District not found")
+    return SA_LOCATIONS[province][district]
+
+# --- Database Reset & Clean Seed ---
+@api_router.post("/admin/reset-and-seed")
+async def reset_and_seed():
+    """Clear entire database and seed with clean demo data"""
+    # Drop all collections
+    collections = await db.list_collection_names()
+    for coll in collections:
+        await db[coll].drop()
+    
+    # === COMPANY 1: User's company (Mzansi Distribution) ===
+    comp1 = await db.companies.insert_one({
+        "name": "Mzansi Distribution",
+        "contact_person": "Owner",
+        "phone": "0767862760",
+        "email": "info@mzansidistribution.co.za",
+        "address": "Johannesburg, Gauteng",
+        "province": "Gauteng",
+        "created_at": datetime.utcnow()
+    })
+    comp1_id = str(comp1.inserted_id)
+    
+    # Admin for Mzansi Distribution
+    await db.users.insert_one({
+        "name": "Admin",
+        "phone": "0767862760",
+        "pin_hash": hash_pin("1984"),
+        "role": "admin",
+        "is_active": True,
+        "company_id": comp1_id,
+        "created_at": datetime.utcnow()
+    })
+    
+    # Driver for Mzansi Distribution
+    await db.users.insert_one({
+        "name": "Sipho Driver",
+        "phone": "0812345001",
+        "pin_hash": hash_pin("1234"),
+        "role": "driver",
+        "is_active": True,
+        "company_id": comp1_id,
+        "created_at": datetime.utcnow()
+    })
+    
+    # Routes for Mzansi Distribution
+    r1 = await db.routes.insert_one({
+        "name": "Soweto & Surrounds",
+        "description": "Soweto, Orange Farm and surrounding areas",
+        "company_id": comp1_id,
+        "province": "Gauteng",
+        "district": "City of Johannesburg",
+        "areas_covered": ["Soweto", "Orange Farm", "Diepsloot"],
+        "delivery_schedule": {"delivery_days": ["Monday", "Wednesday", "Friday"], "cut_off_hours_before": 16, "cut_off_time": "16:00"},
+        "created_at": datetime.utcnow()
+    })
+    r2 = await db.routes.insert_one({
+        "name": "Pretoria Route",
+        "description": "Pretoria CBD, Mamelodi and surrounds",
+        "company_id": comp1_id,
+        "province": "Gauteng",
+        "district": "City of Tshwane",
+        "areas_covered": ["Pretoria CBD", "Mamelodi", "Atteridgeville", "Soshanguve"],
+        "delivery_schedule": {"delivery_days": ["Tuesday", "Thursday"], "cut_off_hours_before": 14, "cut_off_time": "14:00"},
+        "created_at": datetime.utcnow()
+    })
+    
+    # Products for Mzansi Distribution
+    products1 = [
+        {"name": "White Bread", "category": "Bakery", "unit_type": "loaf", "price": 18.50, "company_id": comp1_id, "created_at": datetime.utcnow()},
+        {"name": "Brown Bread", "category": "Bakery", "unit_type": "loaf", "price": 16.00, "company_id": comp1_id, "created_at": datetime.utcnow()},
+        {"name": "Full Cream Milk 2L", "category": "Dairy", "unit_type": "bottle", "price": 32.00, "company_id": comp1_id, "created_at": datetime.utcnow()},
+        {"name": "Amasi 1L", "category": "Dairy", "unit_type": "bottle", "price": 22.50, "company_id": comp1_id, "created_at": datetime.utcnow()},
+        {"name": "Large Eggs (30)", "category": "Eggs", "unit_type": "tray", "price": 65.00, "company_id": comp1_id, "created_at": datetime.utcnow()},
+        {"name": "Sunflower Oil 750ml", "category": "Cooking", "unit_type": "bottle", "price": 45.00, "company_id": comp1_id, "created_at": datetime.utcnow()},
+        {"name": "Maize Meal 5kg", "category": "Staples", "unit_type": "bag", "price": 55.00, "company_id": comp1_id, "created_at": datetime.utcnow()},
+        {"name": "Sugar 2kg", "category": "Staples", "unit_type": "bag", "price": 38.50, "company_id": comp1_id, "created_at": datetime.utcnow()},
+    ]
+    await db.products.insert_many(products1)
+    
+    # Vehicles for Mzansi Distribution
+    await db.vehicles.insert_many([
+        {"registration": "GP 123 ABC", "name": "Truck 1 - Toyota Dyna", "vehicle_type": "truck", "capacity_crates": 120, "is_active": True, "company_id": comp1_id, "created_at": datetime.utcnow()},
+        {"registration": "GP 456 DEF", "name": "Truck 2 - Isuzu NPR", "vehicle_type": "truck", "capacity_crates": 150, "is_active": True, "company_id": comp1_id, "created_at": datetime.utcnow()},
+    ])
+    
+    # === COMPANY 2: Fresh Foods SA ===
+    comp2 = await db.companies.insert_one({
+        "name": "Fresh Foods SA",
+        "contact_person": "James Moyo",
+        "phone": "0711002001",
+        "email": "james@freshfoods.co.za",
+        "address": "Durban, KwaZulu-Natal",
+        "province": "KwaZulu-Natal",
+        "created_at": datetime.utcnow()
+    })
+    comp2_id = str(comp2.inserted_id)
+    
+    await db.users.insert_one({
+        "name": "James Moyo",
+        "phone": "0711002001",
+        "pin_hash": hash_pin("2222"),
+        "role": "admin",
+        "is_active": True,
+        "company_id": comp2_id,
+        "created_at": datetime.utcnow()
+    })
+    
+    r3 = await db.routes.insert_one({
+        "name": "Durban Central",
+        "description": "Durban CBD, Umlazi, Chatsworth",
+        "company_id": comp2_id,
+        "province": "KwaZulu-Natal",
+        "district": "eThekwini",
+        "areas_covered": ["Durban CBD", "Umlazi", "Chatsworth", "Phoenix", "KwaMashu"],
+        "delivery_schedule": {"delivery_days": ["Monday", "Thursday"], "cut_off_hours_before": 12, "cut_off_time": "12:00"},
+        "created_at": datetime.utcnow()
+    })
+    
+    products2 = [
+        {"name": "Fresh Chicken 1.5kg", "category": "Poultry", "unit_type": "pack", "price": 75.00, "company_id": comp2_id, "created_at": datetime.utcnow()},
+        {"name": "Beef Mince 500g", "category": "Meat", "unit_type": "pack", "price": 55.00, "company_id": comp2_id, "created_at": datetime.utcnow()},
+        {"name": "Pap 2.5kg", "category": "Staples", "unit_type": "bag", "price": 29.00, "company_id": comp2_id, "created_at": datetime.utcnow()},
+        {"name": "Tinned Pilchards", "category": "Canned", "unit_type": "tin", "price": 18.50, "company_id": comp2_id, "created_at": datetime.utcnow()},
+        {"name": "Cooking Oil 2L", "category": "Cooking", "unit_type": "bottle", "price": 69.00, "company_id": comp2_id, "created_at": datetime.utcnow()},
+    ]
+    await db.products.insert_many(products2)
+    
+    await db.vehicles.insert_one({
+        "registration": "KZN 789 GHI", "name": "Van 1 - Hyundai HD72", "vehicle_type": "van", "capacity_crates": 80, "is_active": True, "company_id": comp2_id, "created_at": datetime.utcnow()
+    })
+    
+    # === COMPANY 3: Cape Traders ===
+    comp3 = await db.companies.insert_one({
+        "name": "Cape Traders",
+        "contact_person": "Sarah van Wyk",
+        "phone": "0722003001",
+        "email": "sarah@capetraders.co.za",
+        "address": "Cape Town, Western Cape",
+        "province": "Western Cape",
+        "created_at": datetime.utcnow()
+    })
+    comp3_id = str(comp3.inserted_id)
+    
+    await db.users.insert_one({
+        "name": "Sarah van Wyk",
+        "phone": "0722003001",
+        "pin_hash": hash_pin("3333"),
+        "role": "admin",
+        "is_active": True,
+        "company_id": comp3_id,
+        "created_at": datetime.utcnow()
+    })
+    
+    r4 = await db.routes.insert_one({
+        "name": "Cape Flats Route",
+        "description": "Khayelitsha, Mitchells Plain, Gugulethu",
+        "company_id": comp3_id,
+        "province": "Western Cape",
+        "district": "City of Cape Town",
+        "areas_covered": ["Khayelitsha", "Mitchells Plain", "Gugulethu", "Nyanga", "Langa"],
+        "delivery_schedule": {"delivery_days": ["Wednesday", "Saturday"], "cut_off_hours_before": 18, "cut_off_time": "18:00"},
+        "created_at": datetime.utcnow()
+    })
+    
+    products3 = [
+        {"name": "Biltong 100g", "category": "Snacks", "unit_type": "pack", "price": 45.00, "company_id": comp3_id, "created_at": datetime.utcnow()},
+        {"name": "Rooibos Tea (40 bags)", "category": "Beverages", "unit_type": "box", "price": 35.00, "company_id": comp3_id, "created_at": datetime.utcnow()},
+        {"name": "Coke 2L", "category": "Beverages", "unit_type": "bottle", "price": 24.00, "company_id": comp3_id, "created_at": datetime.utcnow()},
+        {"name": "Simba Chips (36 pack)", "category": "Snacks", "unit_type": "box", "price": 120.00, "company_id": comp3_id, "created_at": datetime.utcnow()},
+    ]
+    await db.products.insert_many(products3)
+    
+    # Vehicle for Cape Traders
+    await db.vehicles.insert_one({
+        "registration": "CA 321 JKL", "name": "Bakkie 1 - Toyota Hilux", "vehicle_type": "bakkie", "capacity_crates": 60, "is_active": True, "company_id": comp3_id, "created_at": datetime.utcnow()
+    })
+    
+    # === CUSTOMER 1: Thabo's Spaza (Soweto - MARKETPLACE: not tied to single company) ===
+    cust1 = await db.users.insert_one({
+        "name": "Thabo Mokoena",
+        "phone": "0831001001",
+        "pin_hash": hash_pin("1111"),
+        "role": "customer",
+        "is_active": True,
+        "company_id": "",
+        "customer_profile": {
+            "business_name": "Thabo's Spaza Shop",
+            "contact_person": "Thabo Mokoena",
+            "delivery_address": "123 Vilakazi St, Soweto",
+            "province": "Gauteng",
+            "district": "City of Johannesburg",
+            "city": "Soweto",
+        },
+        "created_at": datetime.utcnow()
+    })
+    
+    # === CUSTOMER 2: Nomsa's Tuck Shop (Durban - MARKETPLACE: not tied to single company) ===
+    cust2 = await db.users.insert_one({
+        "name": "Nomsa Dlamini",
+        "phone": "0842002002",
+        "pin_hash": hash_pin("2222"),
+        "role": "customer",
+        "is_active": True,
+        "company_id": "",
+        "customer_profile": {
+            "business_name": "Nomsa's Tuck Shop",
+            "contact_person": "Nomsa Dlamini",
+            "delivery_address": "45 Booth Rd, Umlazi",
+            "province": "KwaZulu-Natal",
+            "district": "eThekwini",
+            "city": "Umlazi",
+        },
+        "created_at": datetime.utcnow()
+    })
+    
+    return {
+        "message": "Database reset and seeded successfully",
+        "companies": [
+            {"name": "Mzansi Distribution", "admin_phone": "0767862760", "admin_pin": "1984", "id": comp1_id},
+            {"name": "Fresh Foods SA", "admin_phone": "0711002001", "admin_pin": "2222", "id": comp2_id},
+            {"name": "Cape Traders", "admin_phone": "0722003001", "admin_pin": "3333", "id": comp3_id},
+        ],
+        "customers": [
+            {"name": "Thabo's Spaza Shop", "phone": "0831001001", "pin": "1111", "location": "Soweto, Gauteng"},
+            {"name": "Nomsa's Tuck Shop", "phone": "0842002002", "pin": "2222", "location": "Umlazi, KZN"},
+        ],
+        "routes": 4,
+        "products": len(products1) + len(products2) + len(products3),
+        "vehicles": 4
+    }
+
 
 def generate_order_number(company_name: str) -> str:
     """Generate unique order number: COMPCODE-DATE-SEQ"""
@@ -3331,20 +3661,51 @@ def get_next_delivery_day(delivery_days: List[str], cut_off_hours: int = 16) -> 
 # --- Customer Registration ---
 @api_router.post("/auth/register-customer")
 async def register_customer(data: CustomerRegister):
-    """Register a new customer user linked to a distributor company and route"""
+    """Register a new customer user - marketplace model"""
     existing = await db.users.find_one({"phone": data.phone})
     if existing:
         raise HTTPException(status_code=400, detail="Phone number already registered")
     
-    # Verify company exists
-    company = await db.companies.find_one({"_id": ObjectId(data.company_id)})
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
+    profile = {
+        "business_name": data.business_name,
+        "contact_person": data.contact_person,
+        "delivery_address": data.delivery_address or "",
+        "province": data.province or "",
+        "district": data.district or "",
+        "city": data.city or "",
+    }
     
-    # Verify route exists
-    route = await db.routes.find_one({"_id": ObjectId(data.route_id)})
-    if not route:
-        raise HTTPException(status_code=404, detail="Route not found")
+    company_id = ""
+    company_name = ""
+    if data.company_id:
+        try:
+            company = await db.companies.find_one({"_id": ObjectId(data.company_id)})
+            if company:
+                company_id = data.company_id
+                company_name = company.get("name", "")
+        except Exception:
+            pass
+    
+    if data.route_id:
+        try:
+            route = await db.routes.find_one({"_id": ObjectId(data.route_id)})
+            if route:
+                profile["route_id"] = data.route_id
+                profile["route_name"] = route.get("name", "")
+                if not company_id:
+                    company_id = route.get("company_id", "")
+        except Exception:
+            pass
+    
+    # Auto-match by location if no route
+    if not data.route_id and data.province and data.city:
+        matching = await db.routes.find({"province": data.province, "areas_covered": data.city}).to_list(10)
+        if matching:
+            best = matching[0]
+            profile["route_id"] = str(best["_id"])
+            profile["route_name"] = best.get("name", "")
+            if not company_id:
+                company_id = best.get("company_id", "")
     
     user_doc = {
         "name": data.contact_person,
@@ -3352,40 +3713,31 @@ async def register_customer(data: CustomerRegister):
         "pin_hash": hash_pin(data.pin),
         "role": "customer",
         "is_active": True,
-        "company_id": data.company_id,
-        "customer_profile": {
-            "business_name": data.business_name,
-            "contact_person": data.contact_person,
-            "delivery_address": data.delivery_address,
-            "location": data.location,
-            "route_id": data.route_id,
-            "route_name": route.get("name", ""),
-        },
+        "company_id": company_id,
+        "customer_profile": profile,
         "created_at": datetime.utcnow()
     }
     result = await db.users.insert_one(user_doc)
     
-    # Also create a customer record for the distribution system
-    customer_doc = {
-        "name": data.business_name,
-        "phone": data.phone,
-        "address": data.delivery_address or "",
-        "route_id": data.route_id,
-        "route_name": route.get("name", ""),
-        "is_active": True,
-        "balance": 0.0,
-        "company_id": data.company_id,
-        "user_id": str(result.inserted_id),
-        "created_by": str(result.inserted_id),
-        "created_at": datetime.utcnow()
-    }
-    await db.customers.insert_one(customer_doc)
+    if company_id:
+        await db.customers.insert_one({
+            "name": data.business_name,
+            "phone": data.phone,
+            "address": data.delivery_address or "",
+            "route_id": data.route_id or profile.get("route_id", ""),
+            "route_name": profile.get("route_name", ""),
+            "is_active": True,
+            "balance": 0.0,
+            "company_id": company_id,
+            "user_id": str(result.inserted_id),
+            "created_at": datetime.utcnow()
+        })
     
     return {
         "message": "Customer registered successfully",
         "user_id": str(result.inserted_id),
-        "company_name": company.get("name"),
-        "route_name": route.get("name", ""),
+        "company_name": company_name or "Browse all suppliers",
+        "route_name": profile.get("route_name", "Not assigned"),
     }
 
 # --- Public: List Companies for customer registration ---
@@ -3476,7 +3828,135 @@ async def get_route_schedule(route_id: str, current_user: dict = Depends(get_cur
         "next_delivery": delivery_info
     }
 
-# --- Customer: Get products from their distributor ---
+# --- Customer: Get available companies (MARKETPLACE) ---
+@api_router.get("/customer/available-companies")
+async def get_available_companies(current_user: dict = Depends(get_current_user)):
+    """Customer sees all companies that deliver to their area"""
+    if not is_customer(current_user):
+        raise HTTPException(status_code=403, detail="Customer access only")
+    
+    profile = current_user.get("customer_profile", {})
+    customer_province = profile.get("province", "")
+    customer_district = profile.get("district", "")
+    customer_city = profile.get("city", "")
+    
+    # Find routes that cover the customer's area
+    query = {}
+    if customer_city:
+        query["areas_covered"] = customer_city
+    if customer_province:
+        query["province"] = customer_province
+    
+    matching_routes = await db.routes.find(query).to_list(100)
+    
+    # If no exact match, try broader match by province only
+    if not matching_routes and customer_province:
+        matching_routes = await db.routes.find({"province": customer_province}).to_list(100)
+    
+    # If still nothing, return all companies
+    if not matching_routes:
+        all_companies = await db.companies.find({}).to_list(100)
+        result = []
+        for c in all_companies:
+            result.append({
+                "id": str(c["_id"]),
+                "name": c.get("name", ""),
+                "phone": c.get("phone", ""),
+                "address": c.get("address", ""),
+                "province": c.get("province", ""),
+                "routes": [],
+                "product_count": await db.products.count_documents({"company_id": str(c["_id"])}),
+            })
+        return result
+    
+    # Collect unique company IDs from matching routes
+    company_ids = set()
+    route_by_company = {}
+    for r in matching_routes:
+        cid = r.get("company_id", "")
+        if cid:
+            company_ids.add(cid)
+            if cid not in route_by_company:
+                route_by_company[cid] = []
+            schedule = r.get("delivery_schedule", {})
+            route_by_company[cid].append({
+                "id": str(r["_id"]),
+                "name": r.get("name", ""),
+                "areas": r.get("areas_covered", []),
+                "delivery_days": schedule.get("delivery_days", []),
+                "cut_off_time": schedule.get("cut_off_time", "16:00"),
+            })
+    
+    result = []
+    for cid in company_ids:
+        try:
+            company = await db.companies.find_one({"_id": ObjectId(cid)})
+        except Exception:
+            continue
+        if not company:
+            continue
+        product_count = await db.products.count_documents({"company_id": cid})
+        result.append({
+            "id": str(company["_id"]),
+            "name": company.get("name", ""),
+            "phone": company.get("phone", ""),
+            "address": company.get("address", ""),
+            "province": company.get("province", ""),
+            "routes": route_by_company.get(cid, []),
+            "product_count": product_count,
+        })
+    
+    return result
+
+# --- Customer: Get products for a specific company (MARKETPLACE) ---
+@api_router.get("/customer/company/{company_id}/products")
+async def get_customer_company_products(company_id: str, current_user: dict = Depends(get_current_user)):
+    """Customer browses products from a specific company"""
+    if not is_customer(current_user):
+        raise HTTPException(status_code=403, detail="Customer access only")
+    
+    try:
+        company = await db.companies.find_one({"_id": ObjectId(company_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid company ID")
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    products = await db.products.find({"company_id": company_id}).to_list(200)
+    
+    # Also get delivery info for routes covering customer area
+    profile = current_user.get("customer_profile", {})
+    customer_city = profile.get("city", "")
+    route_query = {"company_id": company_id}
+    if customer_city:
+        route_query["areas_covered"] = customer_city
+    matching_route = await db.routes.find_one(route_query)
+    
+    delivery_info = None
+    if matching_route:
+        schedule = matching_route.get("delivery_schedule", {})
+        delivery_info = get_next_delivery_day(
+            schedule.get("delivery_days", []),
+            schedule.get("cut_off_hours_before", 16)
+        )
+    
+    return {
+        "company": {
+            "id": str(company["_id"]),
+            "name": company.get("name", ""),
+            "phone": company.get("phone", ""),
+        },
+        "products": [str_id(p) for p in products],
+        "route": {
+            "id": str(matching_route["_id"]),
+            "name": matching_route.get("name", ""),
+            "delivery_days": matching_route.get("delivery_schedule", {}).get("delivery_days", []),
+            "cut_off_time": matching_route.get("delivery_schedule", {}).get("cut_off_time", "16:00"),
+        } if matching_route else None,
+        "next_delivery": delivery_info,
+    }
+
+# --- Customer: Get products from their assigned distributor (legacy support) ---
 @api_router.get("/customer/products")
 async def get_customer_products(current_user: dict = Depends(get_current_user)):
     """Customer sees products from their assigned distributor"""
@@ -3493,70 +3973,61 @@ async def get_customer_products(current_user: dict = Depends(get_current_user)):
 # --- Customer: Get delivery info ---
 @api_router.get("/customer/delivery-info")
 async def get_customer_delivery_info(current_user: dict = Depends(get_current_user)):
-    """Get the customer's next delivery day and cut-off info"""
+    """Get the customer's delivery info and profile"""
     if not is_customer(current_user):
         raise HTTPException(status_code=403, detail="Customer access only")
     
     profile = current_user.get("customer_profile", {})
-    route_id = profile.get("route_id")
-    
-    if not route_id:
-        return {"message": "No route assigned", "next_delivery": None}
-    
-    try:
-        route = await db.routes.find_one({"_id": ObjectId(route_id)})
-    except Exception:
-        return {"message": "Invalid route reference", "next_delivery": None}
-    if not route:
-        return {"message": "Route not found", "next_delivery": None}
-    
-    schedule = route.get("delivery_schedule", {"delivery_days": [], "cut_off_hours_before": 16})
-    delivery_info = get_next_delivery_day(
-        schedule.get("delivery_days", []),
-        schedule.get("cut_off_hours_before", 16)
-    )
-    
-    company = await db.companies.find_one({"_id": ObjectId(current_user.get("company_id", "000000000000000000000000"))})
     
     return {
-        "company_name": company.get("name", "") if company else "",
-        "route_name": route.get("name", ""),
-        "schedule": schedule,
-        "next_delivery": delivery_info,
+        "company_name": "",
+        "route_name": "",
+        "schedule": {},
+        "next_delivery": None,
         "profile": profile,
     }
 
 # --- Place Order ---
 @api_router.post("/orders")
 async def create_order(order: OrderCreate, current_user: dict = Depends(get_current_user)):
-    """Customer places an order"""
+    """Customer places an order - marketplace model supports ordering from any company"""
     if not is_customer(current_user):
         raise HTTPException(status_code=403, detail="Customer access only")
     
     # Get customer profile
     profile = current_user.get("customer_profile", {})
-    route_id = profile.get("route_id")
+    customer_city = profile.get("city", "")
     
     # Verify company
     company = await db.companies.find_one({"_id": ObjectId(order.company_id)})
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     
+    # Find matching route for this company and customer's area
+    route_query = {"company_id": order.company_id}
+    if customer_city:
+        route_query["areas_covered"] = customer_city
+    matching_route = await db.routes.find_one(route_query)
+    
+    # Fallback: any route for this company
+    if not matching_route:
+        matching_route = await db.routes.find_one({"company_id": order.company_id})
+    
+    route_id = str(matching_route["_id"]) if matching_route else ""
+    route_name = matching_route.get("name", "") if matching_route else ""
+    
     # Check delivery schedule and cut-off
-    if route_id:
-        route = await db.routes.find_one({"_id": ObjectId(route_id)})
-        schedule = route.get("delivery_schedule", {}) if route else {}
+    delivery_info = None
+    if matching_route:
+        schedule = matching_route.get("delivery_schedule", {})
         delivery_days = schedule.get("delivery_days", [])
         cut_off_hours = schedule.get("cut_off_hours_before", 16)
-        
         delivery_info = get_next_delivery_day(delivery_days, cut_off_hours)
         
         if delivery_info and not delivery_info.get("is_open", True):
             return {"error": True, "message": f"Orders for the next delivery are closed. Next delivery: {delivery_info.get('delivery_day', 'TBD')}"}
-    else:
-        delivery_info = None
     
-    # Check for duplicate orders (same customer, same day - only block if pending/confirmed/adjusted/packed)
+    # Check for duplicate orders (same customer, same company, same day)
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     existing_order = await db.orders.find_one({
         "customer_id": current_user["id"],
@@ -3569,7 +4040,6 @@ async def create_order(order: OrderCreate, current_user: dict = Depends(get_curr
     
     # Generate order number
     order_number = generate_order_number(company.get("name", "ORD"))
-    # Ensure unique
     while await db.orders.find_one({"order_number": order_number}):
         order_number = generate_order_number(company.get("name", "ORD"))
     
@@ -3578,11 +4048,12 @@ async def create_order(order: OrderCreate, current_user: dict = Depends(get_curr
     order_doc = {
         "order_number": order_number,
         "company_id": order.company_id,
+        "company_name": company.get("name", ""),
         "customer_id": current_user["id"],
         "customer_name": profile.get("business_name", current_user.get("name", "")),
         "customer_phone": current_user.get("phone", ""),
         "route_id": route_id,
-        "route_name": profile.get("route_name", ""),
+        "route_name": route_name,
         "items": [item.dict() for item in order.items],
         "original_items": [item.dict() for item in order.items],
         "total_amount": total_amount,

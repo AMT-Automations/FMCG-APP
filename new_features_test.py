@@ -13,7 +13,7 @@ import sys
 from datetime import datetime
 
 class NewFeaturesTester:
-    def __init__(self, base_url="https://order-system-preview-2.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://distributor-connect-4.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.driver_token = None
         self.admin_token = None

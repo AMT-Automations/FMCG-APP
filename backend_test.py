@@ -1,500 +1,527 @@
 #!/usr/bin/env python3
 """
-Comprehensive 16-Phase Integration Test for Mzansi FMCG Tracker
-Backend URL: https://order-system-preview-2.preview.emergentagent.com/api
-
-This test validates the full customer ordering system workflow with fixes applied:
-1) PUT /api/routes/{id}/schedule returns schedule object + next_delivery 
-2) PUT /api/orders/{id}/status returns full updated order object
-3) PUT /api/orders/{id}/adjust returns full order
-4) Duplicate order check allows new orders after delivered/cancelled
-
-Target: 16/16 phases passed (improvement from previous 13/16)
+Backend Test for Mzansi FMCG Tracker - NEW Marketplace Model Endpoints Testing
+Tests the specific marketplace endpoints as mentioned in the review request
 """
 
 import requests
 import json
-from datetime import datetime
 import sys
-import time
+from datetime import datetime
 
-# Configuration
-BASE_URL = "https://order-system-preview-2.preview.emergentagent.com/api"
-HEADERS = {"Content-Type": "application/json"}
+# Backend URL from frontend/.env
+BASE_URL = "https://distributor-connect-4.preview.emergentagent.com/api"
 
-# Generate unique suffix for phone numbers to avoid conflicts
-UNIQUE_SUFFIX = str(int(time.time()))[-4:]  # Last 4 digits of timestamp
+def print_test_header(test_name):
+    print(f"\n{'='*60}")
+    print(f"TEST: {test_name}")
+    print('='*60)
 
-# Test data storage
-test_data = {
-    "company_id": None,
-    "admin_token": None,
-    "customer_token": None,
-    "product_ids": [],
-    "route_id": None,
-    "customer_id": None,
-    "order_id": None,
-    "rival_company_id": None,
-    "rival_admin_token": None
-}
-
-def log_test(phase, description, success, details=""):
-    """Log test results with consistent formatting"""
+def print_result(success, message, data=None):
     status = "✅ PASS" if success else "❌ FAIL"
-    print(f"\n{phase}: {description}")
-    print(f"Status: {status}")
-    if details:
-        print(f"Details: {details}")
-    if not success:
-        print("=" * 60)
+    print(f"{status}: {message}")
+    if data:
+        print(f"Data: {json.dumps(data, indent=2)}")
 
-def make_request(method, endpoint, data=None, token=None, expect_status=200):
-    """Make HTTP request with consistent error handling"""
-    url = f"{BASE_URL}{endpoint}"
-    headers = HEADERS.copy()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+def test_database_seed():
+    """Test 1: Database Seed - POST /api/admin/reset-and-seed"""
+    print_test_header("Database Seed & Data Verification")
     
     try:
-        if method.upper() == "GET":
-            response = requests.get(url, headers=headers)
-        elif method.upper() == "POST":
-            response = requests.post(url, json=data, headers=headers)
-        elif method.upper() == "PUT":
-            response = requests.put(url, json=data, headers=headers)
-        else:
-            raise ValueError(f"Unsupported method: {method}")
+        # Seed the database
+        response = requests.post(f"{BASE_URL}/admin/reset-and-seed", timeout=30)
+        print(f"Status Code: {response.status_code}")
         
-        print(f"  {method.upper()} {endpoint} -> {response.status_code}")
-        
-        if response.status_code != expect_status:
-            print(f"  Expected {expect_status}, got {response.status_code}")
-            print(f"  Response: {response.text[:200]}...")
-            return None, False
+        if response.status_code == 200:
+            data = response.json()
+            print_result(True, "Database seeded successfully", data)
             
-        return response.json() if response.text else {}, True
+            # Verify expected counts
+            companies = data.get("companies", [])
+            customers = data.get("customers", [])
+            routes = data.get("routes", 0)
+            vehicles = data.get("vehicles", 0)
+            products = data.get("products", 0)
+            
+            expected_companies = 3
+            expected_customers = 2
+            expected_routes = 4
+            expected_vehicles = 4
+            expected_products = 17  # 8 + 5 + 4 = 17 total products
+            
+            success = (len(companies) == expected_companies and 
+                      len(customers) == expected_customers and
+                      routes == expected_routes and
+                      vehicles == expected_vehicles and
+                      products == expected_products)
+            
+            print_result(success, f"Seed verification: {len(companies)} companies, {len(customers)} customers, {routes} routes, {vehicles} vehicles, {products} products")
+            
+            return success, data
+        else:
+            print_result(False, f"Database seed failed with status {response.status_code}: {response.text}")
+            return False, None
     except Exception as e:
-        print(f"  ERROR: {str(e)}")
-        return None, False
+        print_result(False, f"Database seed error: {str(e)}")
+        return False, None
 
-def run_16_phase_test():
-    """Execute all 16 phases of the integration test"""
-    passed_phases = 0
-    total_phases = 16
+def test_admin_login():
+    """Test 2: Admin Login - POST /api/auth/login with Mzansi Distribution admin"""
+    print_test_header("Admin Login Test")
     
-    print("=" * 80)
-    print("MZANSI FMCG TRACKER - 16 PHASE INTEGRATION TEST")
-    print("=" * 80)
-    
-    # Phase 1: Setup Fresh Company
-    admin_phone = f"076666{UNIQUE_SUFFIX}"
-    data, success = make_request("POST", "/companies/setup", {
-        "company": {
-            "name": "TestCo Distributors",
-            "contact_person": "Test Manager",
-            "phone": "0123456789",
-            "email": "test@testco.com",
-            "address": "123 Test Street, Test City"
-        },
-        "admin_name": "Test Admin",
-        "admin_phone": admin_phone,
-        "admin_pin": "7777"
-    })
-    
-    if success and data and "company_id" in data:
-        test_data["company_id"] = data["company_id"]
-        passed_phases += 1
-        log_test("Phase 1", "Setup Fresh Company", True, 
-                f"Created TestCo Distributors with ID: {data['company_id']}")
-    else:
-        log_test("Phase 1", "Setup Fresh Company", False, "Failed to create company")
-        return 0, total_phases
-    
-    # Phase 2: Admin Login
-    data, success = make_request("POST", "/auth/login", {
-        "phone": admin_phone,
-        "pin": "7777"
-    })
-    
-    if success and data and "token" in data:
-        test_data["admin_token"] = data["token"]
-        passed_phases += 1
-        log_test("Phase 2", "Admin Login", True, "Admin authentication successful")
-    else:
-        log_test("Phase 2", "Admin Login", False, "Failed to login admin")
-        return passed_phases, total_phases
-    
-    # Phase 3: Create 3 Products
-    products = [
-        {"name": "Test Bread", "price": 18.50, "category": "Bakery", "unit_type": "loaf", "vat_applicable": True},
-        {"name": "Test Milk", "price": 22.00, "category": "Dairy", "unit_type": "liter", "vat_applicable": True},
-        {"name": "Test Eggs", "price": 35.00, "category": "Fresh", "unit_type": "dozen", "vat_applicable": False}
-    ]
-    
-    products_created = 0
-    for product in products:
-        data, success = make_request("POST", "/products", product, test_data["admin_token"])
-        if success and data and "id" in data:
-            test_data["product_ids"].append(data["id"])
-            products_created += 1
-    
-    if products_created == 3:
-        passed_phases += 1
-        log_test("Phase 3", "Create 3 Products", True, f"Created {products_created} products")
-    else:
-        log_test("Phase 3", "Create 3 Products", False, f"Only created {products_created}/3 products")
-        return passed_phases, total_phases
-    
-    # Phase 4: Create Route
-    data, success = make_request("POST", "/routes", {
-        "name": "Cape Town Route",
-        "description": "Main Cape Town delivery route"
-    }, test_data["admin_token"])
-    
-    if success and data and "id" in data:
-        test_data["route_id"] = data["id"]
-        passed_phases += 1
-        log_test("Phase 4", "Create Route", True, f"Created route with ID: {data['id']}")
-    else:
-        log_test("Phase 4", "Create Route", False, "Failed to create route")
-        return passed_phases, total_phases
-    
-    # Phase 5: Set Delivery Schedule (FIXED - should return schedule object + next_delivery)
-    data, success = make_request("PUT", f"/routes/{test_data['route_id']}/schedule", {
-        "delivery_days": ["Tuesday", "Thursday"],
-        "cut_off_time": "14:00"
-    }, test_data["admin_token"])
-    
-    schedule_valid = (success and data and 
-                     "schedule" in data and 
-                     "delivery_days" in data["schedule"] and
-                     "next_delivery" in data)
-    
-    if schedule_valid:
-        passed_phases += 1
-        log_test("Phase 5", "Set Delivery Schedule (FIXED)", True, 
-                f"Schedule set with next delivery: {data.get('next_delivery', 'N/A')}")
-    else:
-        log_test("Phase 5", "Set Delivery Schedule (FIXED)", False, 
-                "Response missing schedule object or next_delivery")
-        return passed_phases, total_phases
-    
-    # Phase 6-8: Public APIs
-    # Test 6: Company List
-    data, success = make_request("GET", "/companies/list")
-    company_found = success and data and any(
-        comp.get("name") == "TestCo Distributors" for comp in data
-    )
-    
-    if company_found:
-        passed_phases += 1
-        log_test("Phase 6", "Public Company List", True, "TestCo Distributors found in public list")
-    else:
-        log_test("Phase 6", "Public Company List", False, "Company not found in public list")
-        return passed_phases, total_phases
-    
-    # Test 7: Public Routes
-    data, success = make_request("GET", f"/companies/{test_data['company_id']}/routes")
-    route_found = success and data and any(
-        route.get("name") == "Cape Town Route" and "delivery_days" in route 
-        for route in data
-    )
-    
-    if route_found:
-        passed_phases += 1
-        log_test("Phase 7", "Public Routes with Delivery Days", True, "Route found with delivery schedule")
-    else:
-        log_test("Phase 7", "Public Routes with Delivery Days", False, "Route or schedule not found")
-        return passed_phases, total_phases
-    
-    # Test 8: Public Products
-    data, success = make_request("GET", f"/companies/{test_data['company_id']}/products")
-    products_found = success and data and len(data) >= 3
-    
-    if products_found:
-        passed_phases += 1
-        log_test("Phase 8", "Public Products", True, f"Found {len(data)} products")
-    else:
-        log_test("Phase 8", "Public Products", False, "Less than 3 products found")
-        return passed_phases, total_phases
-    
-    # Phase 9: Customer Registration
-    customer_phone = f"076666{UNIQUE_SUFFIX[:-1]}2"  # Different last digit
-    data, success = make_request("POST", "/auth/register-customer", {
-        "business_name": "Test Tuck Shop", 
-        "contact_person": "Test Customer Shop",
-        "phone": customer_phone,
-        "pin": "8888",
-        "company_id": test_data["company_id"],
-        "route_id": test_data["route_id"]
-    })
-    
-    if success and data and "user_id" in data:
-        test_data["customer_id"] = data["user_id"]
-        passed_phases += 1
-        log_test("Phase 9", "Customer Registration", True, f"Customer registered with ID: {data['user_id']}")
-    else:
-        log_test("Phase 9", "Customer Registration", False, "Failed to register customer")
-        return passed_phases, total_phases
-    
-    # Phase 10: Customer Login
-    data, success = make_request("POST", "/auth/login", {
-        "phone": customer_phone,
-        "pin": "8888"
-    })
-    
-    customer_login_valid = (success and data and 
-                           "token" in data and
-                           data.get("user", {}).get("role") == "customer" and
-                           "customer_profile" in data.get("user", {}))
-    
-    if customer_login_valid:
-        test_data["customer_token"] = data["token"]
-        passed_phases += 1
-        log_test("Phase 10", "Customer Login", True, 
-                f"Customer login successful with profile: {data['user']['customer_profile'].get('business_name', 'N/A')}")
-    else:
-        log_test("Phase 10", "Customer Login", False, "Customer login failed or missing profile")
-        return passed_phases, total_phases
-    
-    # Phase 11: Customer Views Products
-    data, success = make_request("GET", "/customer/products", token=test_data["customer_token"])
-    customer_products_valid = success and data and len(data) >= 3
-    
-    if customer_products_valid:
-        test_data["customer_products"] = data  # Save product details for order creation
-        passed_phases += 1
-        log_test("Phase 11", "Customer Views Products", True, f"Customer sees {len(data)} products")
-    else:
-        log_test("Phase 11", "Customer Views Products", False, "Customer cannot see products")
-        return passed_phases, total_phases
-    
-    # Phase 12: Customer Views Delivery Info
-    data, success = make_request("GET", "/customer/delivery-info", token=test_data["customer_token"])
-    delivery_info_valid = (success and data and 
-                          "company_name" in data and 
-                          "route_name" in data and
-                          "schedule" in data and
-                          "next_delivery" in data)
-    
-    if delivery_info_valid:
-        passed_phases += 1
-        log_test("Phase 12", "Customer Views Delivery Info", True, 
-                f"Delivery info complete: {data['company_name']} - {data['route_name']}")
-    else:
-        log_test("Phase 12", "Customer Views Delivery Info", False, "Delivery info incomplete")
-        return passed_phases, total_phases
-    
-    # Phase 13: Customer Places Order
-    # Create order items with product details from customer products
-    product1 = test_data["customer_products"][0]
-    product2 = test_data["customer_products"][1]
-    
-    order_items = [
-        {
-            "product_id": product1["id"],
-            "product_name": product1["name"],
-            "quantity": 2,
-            "unit_price": product1["price"]
-        },
-        {
-            "product_id": product2["id"],
-            "product_name": product2["name"],
-            "quantity": 3,
-            "unit_price": product2["price"]
+    try:
+        login_data = {
+            "phone": "0767862760",
+            "pin": "1984"
         }
-    ]
-    
-    data, success = make_request("POST", "/orders", {
-        "company_id": test_data["company_id"],
-        "items": order_items
-    }, test_data["customer_token"])
-    
-    order_created = (success and data and 
-                    "order_number" in data and
-                    "total_amount" in data and
-                    data.get("status") == "pending")
-    
-    if order_created:
-        test_data["order_id"] = data.get("id")
-        passed_phases += 1
-        log_test("Phase 13", "Customer Places Order", True, 
-                f"Order {data['order_number']} created, Total: R{data['total_amount']}")
-    else:
-        log_test("Phase 13", "Customer Places Order", False, "Order creation failed")
-        return passed_phases, total_phases
-    
-    # Phase 14: Admin Sees Orders & Dashboard
-    data, success = make_request("GET", "/orders", token=test_data["admin_token"])
-    admin_sees_orders = success and data and len(data) > 0
-    
-    if admin_sees_orders:
-        # Test dashboard summary
-        data, success = make_request("GET", "/orders/dashboard/summary", token=test_data["admin_token"])
-        dashboard_valid = success and data and "pending" in data and "total_value" in data
         
-        if dashboard_valid:
-            passed_phases += 1
-            log_test("Phase 14", "Admin Views Orders & Dashboard", True, 
-                    f"Dashboard shows {data['pending']} pending orders, Total: R{data.get('total_value', 0)}")
+        response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            token = data.get("token")
+            user = data.get("user", {})
+            user_role = user.get("role")
+            name = user.get("name")
+            
+            success = token and user_role == "admin" and name
+            print_result(success, f"Admin login successful - Name: {name}, Role: {user_role}")
+            
+            return success, token
         else:
-            log_test("Phase 14", "Admin Views Orders & Dashboard", False, "Dashboard summary failed")
-            return passed_phases, total_phases
-    else:
-        log_test("Phase 14", "Admin Views Orders & Dashboard", False, "Admin cannot see orders")
-        return passed_phases, total_phases
+            print_result(False, f"Admin login failed with status {response.status_code}: {response.text}")
+            return False, None
+    except Exception as e:
+        print_result(False, f"Admin login error: {str(e)}")
+        return False, None
+
+def test_location_endpoints():
+    """Test 3: Location Endpoints - provinces, districts, areas"""
+    print_test_header("Location Endpoints Test")
     
-    # Phase 15: Order Status Updates (FIXED - should return full order object)
-    data, success = make_request("PUT", f"/orders/{test_data['order_id']}/status", {
-        "status": "confirmed"
-    }, test_data["admin_token"])
+    results = []
     
-    status_update_valid = (success and data and 
-                          "status" in data and 
-                          data["status"] == "confirmed" and
-                          "order_number" in data)  # Full order object returned
-    
-    if status_update_valid:
-        # Verify customer can see updated status
-        data, success = make_request("GET", f"/orders/{test_data['order_id']}", 
-                                    token=test_data["customer_token"])
-        customer_sees_update = success and data and data.get("status") == "confirmed"
-        
-        if customer_sees_update:
-            passed_phases += 1
-            log_test("Phase 15", "Order Status Update (FIXED)", True, 
-                    "Admin updated to confirmed, customer sees update")
+    # Test 1: Get provinces (no auth needed)
+    try:
+        response = requests.get(f"{BASE_URL}/locations/provinces", timeout=10)
+        if response.status_code == 200:
+            provinces = response.json()
+            success = len(provinces) == 9
+            print_result(success, f"Provinces endpoint: {len(provinces)} provinces returned")
+            results.append(success)
         else:
-            log_test("Phase 15", "Order Status Update (FIXED)", False, 
-                    "Customer cannot see status update")
-            return passed_phases, total_phases
-    else:
-        log_test("Phase 15", "Order Status Update (FIXED)", False, 
-                "Status update didn't return full order object")
-        return passed_phases, total_phases
+            print_result(False, f"Provinces endpoint failed: {response.status_code}")
+            results.append(False)
+    except Exception as e:
+        print_result(False, f"Provinces endpoint error: {str(e)}")
+        results.append(False)
     
-    # Phase 16: Full Order Workflow & Data Isolation Test
-    # Complete order workflow
-    for status in ["packed", "out_for_delivery", "delivered"]:
-        data, success = make_request("PUT", f"/orders/{test_data['order_id']}/status", {
-            "status": status
-        }, test_data["admin_token"])
+    # Test 2: Get districts for Gauteng
+    try:
+        response = requests.get(f"{BASE_URL}/locations/districts/Gauteng", timeout=10)
+        if response.status_code == 200:
+            districts = response.json()
+            success = len(districts) > 0 and "City of Johannesburg" in districts
+            print_result(success, f"Gauteng districts: {len(districts)} districts returned")
+            results.append(success)
+        else:
+            print_result(False, f"Districts endpoint failed: {response.status_code}")
+            results.append(False)
+    except Exception as e:
+        print_result(False, f"Districts endpoint error: {str(e)}")
+        results.append(False)
+    
+    # Test 3: Get areas for City of Johannesburg
+    try:
+        response = requests.get(f"{BASE_URL}/locations/areas/Gauteng/City%20of%20Johannesburg", timeout=10)
+        if response.status_code == 200:
+            areas = response.json()
+            success = len(areas) > 0 and "Soweto" in areas
+            print_result(success, f"Johannesburg areas: {len(areas)} areas returned, includes Soweto")
+            results.append(success)
+        else:
+            print_result(False, f"Areas endpoint failed: {response.status_code}")
+            results.append(False)
+    except Exception as e:
+        print_result(False, f"Areas endpoint error: {str(e)}")
+        results.append(False)
+    
+    return all(results)
+
+def test_customer_login():
+    """Test 4: Customer Login - POST /api/auth/login with customer credentials"""
+    print_test_header("Customer Login Test (Thabo's Spaza)")
+    
+    try:
+        login_data = {
+            "phone": "0831001001",
+            "pin": "1111"
+        }
         
-        if not (success and data and data.get("status") == status):
-            log_test("Phase 16", "Full Order Workflow & Data Isolation", False, 
-                    f"Failed to update status to {status}")
-            return passed_phases, total_phases
+        response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            token = data.get("token")
+            user = data.get("user", {})
+            user_role = user.get("role")
+            name = user.get("name")
+            
+            success = token and user_role == "customer" and name
+            print_result(success, f"Customer login successful - Name: {name}, Role: {user_role}")
+            
+            return success, token
+        else:
+            print_result(False, f"Customer login failed with status {response.status_code}: {response.text}")
+            return False, None
+    except Exception as e:
+        print_result(False, f"Customer login error: {str(e)}")
+        return False, None
+
+def test_marketplace_available_companies(customer_token):
+    """Test 5: Marketplace Available Companies - GET /api/customer/available-companies"""
+    print_test_header("Marketplace Available Companies Test")
     
-    # Verify delivered status for customer
-    data, success = make_request("GET", f"/orders/{test_data['order_id']}", 
-                                token=test_data["customer_token"])
-    if not (success and data and data.get("status") == "delivered"):
-        log_test("Phase 16", "Full Order Workflow & Data Isolation", False, 
-                "Customer cannot see delivered status")
-        return passed_phases, total_phases
+    try:
+        headers = {"Authorization": f"Bearer {customer_token}"}
+        response = requests.get(f"{BASE_URL}/customer/available-companies", headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            companies = response.json()
+            
+            # Should return companies that deliver to Soweto area (Mzansi Distribution)
+            success = len(companies) > 0
+            print_result(success, f"Available companies: {len(companies)} companies found")
+            
+            for company in companies:
+                name = company.get("name", "")
+                product_count = company.get("product_count", 0)
+                routes = company.get("routes", [])
+                print(f"  - {name}: {product_count} products, {len(routes)} routes")
+            
+            return success, companies
+        else:
+            print_result(False, f"Available companies failed with status {response.status_code}: {response.text}")
+            return False, None
+    except Exception as e:
+        print_result(False, f"Available companies error: {str(e)}")
+        return False, None
+
+def test_marketplace_company_products(customer_token, company_id):
+    """Test 6: Company Products - GET /api/customer/company/{company_id}/products"""
+    print_test_header("Marketplace Company Products Test")
     
-    # Test Data Isolation - Create second company
-    data, success = make_request("POST", "/companies/setup", {
-        "company": {
-            "name": "Rival Corp",
-            "contact_person": "Rival Manager",
-            "phone": "0987654321",
-            "email": "rival@rival.com",
-            "address": "456 Rival Street"
-        },
-        "admin_name": "Rival Admin",
-        "admin_phone": f"076666{UNIQUE_SUFFIX[:-1]}3",  # Different last digit
-        "admin_pin": "9999"
-    })
+    try:
+        headers = {"Authorization": f"Bearer {customer_token}"}
+        response = requests.get(f"{BASE_URL}/customer/company/{company_id}/products", headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            company_info = data.get("company", {})
+            products = data.get("products", [])
+            route = data.get("route", {})
+            next_delivery = data.get("next_delivery", {})
+            
+            success = len(products) > 0 and company_info and route
+            print_result(success, f"Company products: {len(products)} products, route: {route.get('name', 'N/A')}")
+            
+            if next_delivery:
+                print(f"Next delivery: {next_delivery.get('delivery_day', 'N/A')} - {next_delivery.get('delivery_date', 'N/A')}")
+            
+            return success, data
+        else:
+            print_result(False, f"Company products failed with status {response.status_code}: {response.text}")
+            return False, None
+    except Exception as e:
+        print_result(False, f"Company products error: {str(e)}")
+        return False, None
+
+def test_marketplace_place_order(customer_token, company_id):
+    """Test 7: Place Order - POST /api/orders"""
+    print_test_header("Marketplace Place Order Test")
     
-    if not (success and data and "company_id" in data):
-        log_test("Phase 16", "Full Order Workflow & Data Isolation", False, 
-                "Failed to create rival company")
-        return passed_phases, total_phases
+    try:
+        headers = {"Authorization": f"Bearer {customer_token}"}
+        order_data = {
+            "company_id": company_id,
+            "items": [
+                {
+                    "product_id": "test_product_1",
+                    "product_name": "White Bread",
+                    "quantity": 5,
+                    "unit_price": 18.50
+                }
+            ],
+            "notes": "Test order from marketplace"
+        }
+        
+        response = requests.post(f"{BASE_URL}/orders", json=order_data, headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            order_number = data.get("order_number", "")
+            company_name = data.get("company_name", "")
+            route_id = data.get("route_id", "")
+            total_amount = data.get("total_amount", 0)
+            
+            success = order_number and company_name and total_amount > 0
+            print_result(success, f"Order placed: {order_number}, Company: {company_name}, Total: R{total_amount}")
+            
+            return success, data
+        else:
+            print_result(False, f"Place order failed with status {response.status_code}: {response.text}")
+            return False, None
+    except Exception as e:
+        print_result(False, f"Place order error: {str(e)}")
+        return False, None
+
+def test_route_creation_with_location(admin_token):
+    """Test 8: Route Creation with Location - POST /api/routes"""
+    print_test_header("Route Creation with Location Test")
     
-    test_data["rival_company_id"] = data["company_id"]
+    try:
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        route_data = {
+            "name": "Test Route",
+            "province": "Gauteng",
+            "district": "City of Johannesburg", 
+            "areas_covered": ["Soweto", "Orlando"],
+            "delivery_schedule": {
+                "delivery_days": ["Monday", "Friday"],
+                "cut_off_time": "16:00",
+                "cut_off_hours_before": 16
+            },
+            "description": "Test route for marketplace testing"
+        }
+        
+        response = requests.post(f"{BASE_URL}/routes", json=route_data, headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code in [200, 201]:  # Accept both 200 and 201
+            data = response.json()
+            route_name = data.get("name", "")
+            province = data.get("province", "")
+            areas = data.get("areas_covered", [])
+            schedule = data.get("delivery_schedule", {})
+            
+            success = route_name == "Test Route" and province == "Gauteng" and len(areas) == 2
+            print_result(success, f"Route created: {route_name}, Province: {province}, Areas: {areas}")
+            
+            return success, data
+        else:
+            print_result(False, f"Route creation failed with status {response.status_code}: {response.text}")
+            return False, None
+    except Exception as e:
+        print_result(False, f"Route creation error: {str(e)}")
+        return False, None
+
+def test_start_daily_route(admin_token):
+    """Test 9: Start Daily Route - POST /api/daily-routes/start"""
+    print_test_header("Start Daily Route Test")
     
-    # Login as rival admin
-    rival_admin_phone = f"076666{UNIQUE_SUFFIX[:-1]}3"
-    data, success = make_request("POST", "/auth/login", {
-        "phone": rival_admin_phone,
-        "pin": "9999"
-    })
+    try:
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        
+        # First, get available routes and vehicles
+        routes_response = requests.get(f"{BASE_URL}/routes", headers=headers, timeout=10)
+        vehicles_response = requests.get(f"{BASE_URL}/vehicles/available", headers=headers, timeout=10)
+        
+        if routes_response.status_code != 200 or vehicles_response.status_code != 200:
+            print_result(False, "Failed to get routes or vehicles")
+            return False, None
+        
+        routes = routes_response.json()
+        vehicles = vehicles_response.json()
+        
+        if not routes or not vehicles:
+            print_result(False, "No routes or vehicles available")
+            return False, None
+        
+        route_id = routes[0]["id"]
+        vehicle_id = vehicles[0]["id"]
+        
+        route_data = {
+            "route_id": route_id,
+            "vehicle_id": vehicle_id,
+            "opening_km": 15000,  # Changed from opening_kilometres to opening_km
+            "crates_out": 50
+        }
+        
+        response = requests.post(f"{BASE_URL}/daily-routes/start", json=route_data, headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code in [200, 201]:  # Accept both 200 and 201
+            data = response.json()
+            vehicle_name = data.get("vehicle_name", "")
+            route_name = data.get("route_name", "")
+            
+            success = vehicle_name and route_name
+            print_result(success, f"Daily route started: Route {route_name}, Vehicle: {vehicle_name}")
+            
+            return success, data
+        else:
+            print_result(False, f"Start daily route failed with status {response.status_code}: {response.text}")
+            return False, None
+    except Exception as e:
+        print_result(False, f"Start daily route error: {str(e)}")
+        return False, None
+
+def test_second_customer_login_and_availability():
+    """Test 10: Second Customer Test - Nomsa in Umlazi KZN"""
+    print_test_header("Second Customer Test (Nomsa's Tuck Shop - Umlazi KZN)")
     
-    if not (success and data and "token" in data):
-        log_test("Phase 16", "Full Order Workflow & Data Isolation", False, 
-                "Rival admin login failed")
-        return passed_phases, total_phases
-    
-    test_data["rival_admin_token"] = data["token"]
-    
-    # Verify data isolation
-    data, success = make_request("GET", "/orders", token=test_data["rival_admin_token"])
-    rival_isolation_orders = success and data and len(data) == 0
-    
-    data, success = make_request("GET", "/products", token=test_data["rival_admin_token"])
-    rival_isolation_products = success and data and len(data) == 0
-    
-    # Test duplicate order prevention fix (should now allow after delivered)
-    data, success = make_request("POST", "/orders", {
-        "company_id": test_data["company_id"],
-        "items": order_items
-    }, test_data["customer_token"])
-    
-    duplicate_prevention_fixed = success and data and "order_number" in data
-    
-    if rival_isolation_orders and rival_isolation_products and duplicate_prevention_fixed:
-        passed_phases += 1
-        log_test("Phase 16", "Full Order Workflow & Data Isolation", True, 
-                "Data isolation verified, duplicate order prevention fixed")
-    else:
-        failed_details = []
-        if not rival_isolation_orders:
-            failed_details.append("Rival admin can see orders")
-        if not rival_isolation_products:
-            failed_details.append("Rival admin can see products")
-        if not duplicate_prevention_fixed:
-            failed_details.append("Duplicate order prevention not fixed")
-        log_test("Phase 16", "Full Order Workflow & Data Isolation", False, 
-                f"Issues: {', '.join(failed_details)}")
-        return passed_phases, total_phases
-    
-    return passed_phases, total_phases
+    try:
+        # Login as Nomsa
+        login_data = {
+            "phone": "0842002002", 
+            "pin": "2222"
+        }
+        
+        response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
+        print(f"Login Status Code: {response.status_code}")
+        
+        if response.status_code != 200:
+            print_result(False, f"Nomsa login failed: {response.text}")
+            return False
+        
+        data = response.json()
+        token = data.get("token")
+        user = data.get("user", {})
+        name = user.get("name")
+        
+        print_result(True, f"Nomsa login successful - Name: {name}")
+        
+        # Test available companies (should include Fresh Foods SA with Durban route)
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.get(f"{BASE_URL}/customer/available-companies", headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            companies = response.json()
+            
+            # Look for Fresh Foods SA
+            fresh_foods = None
+            for company in companies:
+                if "Fresh Foods SA" in company.get("name", ""):
+                    fresh_foods = company
+                    break
+            
+            success = fresh_foods is not None
+            if fresh_foods:
+                print_result(success, f"Fresh Foods SA found for Umlazi customer: {fresh_foods.get('product_count', 0)} products")
+            else:
+                print_result(False, "Fresh Foods SA not found for Umlazi customer")
+            
+            return success
+        else:
+            print_result(False, f"Available companies failed for Nomsa: {response.text}")
+            return False
+            
+    except Exception as e:
+        print_result(False, f"Second customer test error: {str(e)}")
+        return False
 
 def main():
-    """Main test execution"""
-    print(f"Starting 16-Phase Integration Test at {datetime.now()}")
+    """Main test runner"""
+    print("="*80)
+    print("MZANSI FMCG TRACKER - NEW MARKETPLACE MODEL ENDPOINTS TESTING")
+    print("="*80)
     print(f"Backend URL: {BASE_URL}")
-    print("-" * 80)
+    print(f"Test Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    try:
-        passed, total = run_16_phase_test()
+    test_results = []
+    
+    # Test 1: Database Seed
+    success, seed_data = test_database_seed()
+    test_results.append(("Database Seed", success))
+    
+    if not success:
+        print("\n❌ CRITICAL: Database seed failed. Cannot continue with other tests.")
+        sys.exit(1)
+    
+    # Test 2: Admin Login
+    success, admin_token = test_admin_login()
+    test_results.append(("Admin Login", success))
+    
+    if not success:
+        print("\n❌ CRITICAL: Admin login failed. Cannot continue with admin tests.")
+        admin_token = None
+    
+    # Test 3: Location Endpoints
+    success = test_location_endpoints()
+    test_results.append(("Location Endpoints", success))
+    
+    # Test 4: Customer Login
+    success, customer_token = test_customer_login()
+    test_results.append(("Customer Login", success))
+    
+    if not success:
+        print("\n❌ CRITICAL: Customer login failed. Cannot continue with customer tests.")
+        customer_token = None
+    
+    # Test 5 & 6: Customer Marketplace Tests
+    if customer_token:
+        success, companies = test_marketplace_available_companies(customer_token)
+        test_results.append(("Available Companies", success))
         
-        print("\n" + "=" * 80)
-        print("TEST SUMMARY")
-        print("=" * 80)
-        print(f"Phases Passed: {passed}/{total}")
-        print(f"Success Rate: {(passed/total)*100:.1f}%")
-        
-        if passed == total:
-            print("🎉 ALL TESTS PASSED! 16/16 phases completed successfully.")
-            print("✅ FIXES VERIFIED:")
-            print("  - PUT /api/routes/{id}/schedule returns schedule + next_delivery")
-            print("  - PUT /api/orders/{id}/status returns full order object") 
-            print("  - PUT /api/orders/{id}/adjust returns full order")
-            print("  - Duplicate order check allows orders after delivered/cancelled")
-        else:
-            print(f"❌ {total - passed} phases failed. Please review the failed tests above.")
+        if success and companies:
+            # Use first company for products test
+            company_id = companies[0]["id"]
+            success, products_data = test_marketplace_company_products(customer_token, company_id)
+            test_results.append(("Company Products", success))
             
-        print(f"\nTest completed at {datetime.now()}")
-        return passed == total
+            # Test 7: Place Order
+            success, order_data = test_marketplace_place_order(customer_token, company_id)
+            test_results.append(("Place Order", success))
+        else:
+            test_results.append(("Company Products", False))
+            test_results.append(("Place Order", False))
+    else:
+        test_results.append(("Available Companies", False))
+        test_results.append(("Company Products", False))
+        test_results.append(("Place Order", False))
+    
+    # Test 8 & 9: Admin Tests (Route Creation and Daily Route Start)
+    if admin_token:
+        success, route_data = test_route_creation_with_location(admin_token)
+        test_results.append(("Route Creation with Location", success))
         
-    except KeyboardInterrupt:
-        print("\n\nTest interrupted by user")
-        return False
-    except Exception as e:
-        print(f"\n\nUnexpected error: {str(e)}")
-        return False
+        success, daily_route_data = test_start_daily_route(admin_token)
+        test_results.append(("Start Daily Route", success))
+    else:
+        test_results.append(("Route Creation with Location", False))
+        test_results.append(("Start Daily Route", False))
+    
+    # Test 10: Second Customer Test
+    success = test_second_customer_login_and_availability()
+    test_results.append(("Second Customer Test", success))
+    
+    # Final Results Summary
+    print("\n" + "="*80)
+    print("FINAL TEST RESULTS SUMMARY")
+    print("="*80)
+    
+    passed = sum(1 for _, result in test_results if result)
+    total = len(test_results)
+    
+    for test_name, result in test_results:
+        status = "✅ PASS" if result else "❌ FAIL"
+        print(f"{status}: {test_name}")
+    
+    print(f"\nOVERALL RESULT: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
+    
+    if passed == total:
+        print("🎉 ALL MARKETPLACE MODEL ENDPOINTS WORKING PERFECTLY!")
+    else:
+        print(f"⚠️  {total - passed} tests failed - see details above")
+    
+    print(f"Test Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    return passed == total
 
 if __name__ == "__main__":
     success = main()

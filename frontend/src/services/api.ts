@@ -487,6 +487,22 @@ class ApiService {
     return response.data;
   }
 
+  // ==================== LOCATION DATA ====================
+  async getProvinces() {
+    const response = await this.client.get('/locations/provinces');
+    return response.data;
+  }
+
+  async getDistricts(province: string) {
+    const response = await this.client.get(`/locations/districts/${encodeURIComponent(province)}`);
+    return response.data;
+  }
+
+  async getAreas(province: string, district: string) {
+    const response = await this.client.get(`/locations/areas/${encodeURIComponent(province)}/${encodeURIComponent(district)}`);
+    return response.data;
+  }
+
   // ==================== ORDERING SYSTEM ====================
 
   // Public: List companies for customer registration
@@ -507,21 +523,36 @@ class ApiService {
     return response.data;
   }
 
-  // Customer registration
+  // Customer registration - marketplace model
   async registerCustomer(data: {
     business_name: string;
     contact_person: string;
     phone: string;
     pin: string;
     delivery_address?: string;
-    company_id: string;
-    route_id: string;
+    province?: string;
+    district?: string;
+    city?: string;
+    company_id?: string;
+    route_id?: string;
   }) {
     const response = await this.client.post('/auth/register-customer', data);
     return response.data;
   }
 
-  // Customer: Get products from assigned distributor
+  // MARKETPLACE: Get available companies for customer based on location
+  async getAvailableCompanies() {
+    const response = await this.client.get('/customer/available-companies');
+    return response.data;
+  }
+
+  // MARKETPLACE: Get products for a specific company
+  async getCompanyProducts(companyId: string) {
+    const response = await this.client.get(`/customer/company/${companyId}/products`);
+    return response.data;
+  }
+
+  // Customer: Get products from assigned distributor (legacy)
   async getCustomerProducts() {
     const response = await this.client.get('/customer/products');
     return response.data;

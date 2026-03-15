@@ -1,53 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Alert, Platform,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
-import { api } from '../../src/services/api';
 
 export default function CustomerProfileScreen() {
   const { user, logout } = useAuth();
-  const [deliveryInfo, setDeliveryInfo] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  const loadProfile = async () => {
-    try {
-      const data = await api.getCustomerDeliveryInfo();
-      setDeliveryInfo(data);
-    } catch (error) {
-      console.error('Failed to load profile:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const profile = user?.customer_profile || {} as any;
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: logout },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        },
+      },
     ]);
   };
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#10B981" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const profile = deliveryInfo?.profile || {};
-  const schedule = deliveryInfo?.schedule || {};
-  const nextDelivery = deliveryInfo?.next_delivery;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -85,63 +63,41 @@ export default function CustomerProfileScreen() {
           </View>
         </View>
 
-        {/* Distributor Info */}
+        {/* Location Info */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>My Distributor</Text>
+          <Text style={styles.sectionTitle}>My Location</Text>
           <View style={styles.infoRow}>
-            <Ionicons name="business-outline" size={20} color="#64748B" />
+            <Ionicons name="navigate-outline" size={20} color="#64748B" />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Company</Text>
-              <Text style={styles.infoValue}>{deliveryInfo?.company_name || 'Not assigned'}</Text>
+              <Text style={styles.infoLabel}>Province</Text>
+              <Text style={styles.infoValue}>{profile.province || 'Not set'}</Text>
             </View>
           </View>
           <View style={styles.infoRow}>
             <Ionicons name="map-outline" size={20} color="#64748B" />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Delivery Route</Text>
-              <Text style={styles.infoValue}>{profile.route_name || deliveryInfo?.route_name || 'Not assigned'}</Text>
+              <Text style={styles.infoLabel}>District</Text>
+              <Text style={styles.infoValue}>{profile.district || 'Not set'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="home-outline" size={20} color="#64748B" />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>City / Area</Text>
+              <Text style={styles.infoValue}>{profile.city || 'Not set'}</Text>
             </View>
           </View>
         </View>
 
-        {/* Delivery Schedule */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Delivery Schedule</Text>
-          {schedule.delivery_days && schedule.delivery_days.length > 0 ? (
-            <>
-              <View style={styles.deliveryDaysRow}>
-                {schedule.delivery_days.map((day: string) => (
-                  <View key={day} style={styles.dayTag}>
-                    <Text style={styles.dayTagText}>{day}</Text>
-                  </View>
-                ))}
-              </View>
-              <Text style={styles.cutoffText}>
-                Order cutoff: {schedule.cut_off_time || '16:00'}
-              </Text>
-              {nextDelivery && (
-                <View style={[styles.nextDeliveryCard, nextDelivery.is_open ? styles.deliveryOpen : styles.deliveryClosed]}>
-                  <Ionicons
-                    name={nextDelivery.is_open ? 'checkmark-circle' : 'close-circle'}
-                    size={24}
-                    color={nextDelivery.is_open ? '#10B981' : '#EF4444'}
-                  />
-                  <View style={{ marginLeft: 12 }}>
-                    <Text style={styles.nextDeliveryTitle}>
-                      Next: {nextDelivery.delivery_day} ({nextDelivery.delivery_date})
-                    </Text>
-                    <Text style={styles.nextDeliverySub}>
-                      {nextDelivery.is_open
-                        ? `${Math.round(nextDelivery.hours_until_cutoff)}h until cutoff`
-                        : 'Ordering closed'}
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </>
-          ) : (
-            <Text style={styles.noSchedule}>No delivery schedule set by your distributor</Text>
-          )}
+        {/* Marketplace Info */}
+        <View style={styles.marketplaceBanner}>
+          <Ionicons name="globe-outline" size={24} color="#3B82F6" />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.marketplaceTitle}>Marketplace</Text>
+            <Text style={styles.marketplaceSub}>
+              You can order from any supplier that delivers to your area. Browse suppliers in the Shop tab.
+            </Text>
+          </View>
         </View>
 
         {/* Logout */}
@@ -158,7 +114,6 @@ export default function CustomerProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   content: { padding: 20, paddingBottom: 40 },
   pageTitle: { fontSize: 24, fontWeight: '700', color: '#FFFFFF', marginBottom: 20 },
   profileCard: {
@@ -184,18 +139,12 @@ const styles = StyleSheet.create({
   infoContent: { flex: 1 },
   infoLabel: { fontSize: 12, color: '#64748B', marginBottom: 2 },
   infoValue: { fontSize: 15, color: '#E2E8F0' },
-  deliveryDaysRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
-  dayTag: { backgroundColor: '#064E3B', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  dayTagText: { fontSize: 13, fontWeight: '600', color: '#10B981' },
-  cutoffText: { fontSize: 14, color: '#94A3B8', marginBottom: 12 },
-  nextDeliveryCard: {
-    flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, marginTop: 4,
+  marketplaceBanner: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A5F',
+    borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#3B82F6',
   },
-  deliveryOpen: { backgroundColor: '#064E3B' },
-  deliveryClosed: { backgroundColor: '#7F1D1D' },
-  nextDeliveryTitle: { fontSize: 15, fontWeight: '600', color: '#FFFFFF' },
-  nextDeliverySub: { fontSize: 13, color: '#94A3B8', marginTop: 2 },
-  noSchedule: { fontSize: 14, color: '#64748B', fontStyle: 'italic' },
+  marketplaceTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  marketplaceSub: { fontSize: 13, color: '#94A3B8', marginTop: 4 },
   logoutButton: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#1E293B', borderRadius: 14, padding: 16, marginTop: 8, gap: 8,
