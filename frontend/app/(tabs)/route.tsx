@@ -10,6 +10,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -102,7 +103,11 @@ export default function RouteScreen() {
 
   const handleAddCustomer = async () => {
     if (!newCustomer.name.trim()) {
-      Alert.alert('Error', 'Customer name is required');
+      if (Platform.OS === 'web') {
+        window.alert('Customer name is required');
+      } else {
+        Alert.alert('Error', 'Customer name is required');
+      }
       return;
     }
 
@@ -117,8 +122,16 @@ export default function RouteScreen() {
       setAddCustomerVisible(false);
       setNewCustomer({ name: '', contact: '', location: '' });
       loadData();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to add customer');
+      if (Platform.OS === 'web') {
+        window.alert('Customer added successfully!');
+      }
+    } catch (error: any) {
+      const msg = error.response?.data?.detail || 'Failed to add customer';
+      if (Platform.OS === 'web') {
+        window.alert('Error: ' + msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
     } finally {
       setSavingCustomer(false);
     }

@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -59,7 +60,11 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (user?.role !== 'admin' && user?.role !== 'manager') {
-      Alert.alert('Access Denied', 'You do not have permission to access this page');
+      if (Platform.OS === 'web') {
+        window.alert('Access Denied: You do not have permission to access this page');
+      } else {
+        Alert.alert('Access Denied', 'You do not have permission to access this page');
+      }
       router.back();
       return;
     }
@@ -105,11 +110,11 @@ export default function AdminDashboard() {
 
   const saveUser = async () => {
     if (!userForm.name || !userForm.phone) {
-      Alert.alert('Error', 'Name and phone are required');
+      showAlert('Error', 'Name and phone are required');
       return;
     }
     if (!editingItem && !userForm.pin) {
-      Alert.alert('Error', 'PIN is required for new users');
+      showAlert('Error', 'PIN is required for new users');
       return;
     }
 
@@ -126,35 +131,47 @@ export default function AdminDashboard() {
       }
       setUserModalVisible(false);
       loadData();
-      Alert.alert('Success', editingItem ? 'User updated' : 'User created');
+      showAlert('Success', editingItem ? 'User updated' : 'User created');
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to save user');
+      showAlert('Error', error.response?.data?.detail || 'Failed to save user');
     } finally {
       setSaving(false);
     }
   };
 
   const deactivateUser = (userItem: any) => {
-    Alert.alert(
-      'Deactivate User',
-      `Are you sure you want to deactivate ${userItem.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Deactivate',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.deactivateUser(userItem.id);
-              loadData();
-              Alert.alert('Success', 'User deactivated');
-            } catch (error: any) {
-              Alert.alert('Error', error.response?.data?.detail || 'Failed to deactivate');
-            }
+    if (Platform.OS === 'web') {
+      const proceed = window.confirm(`Are you sure you want to deactivate ${userItem.name}?`);
+      if (proceed) {
+        api.deactivateUser(userItem.id).then(() => {
+          loadData();
+          showAlert('Success', 'User deactivated');
+        }).catch((error: any) => {
+          showAlert('Error', error.response?.data?.detail || 'Failed to deactivate');
+        });
+      }
+    } else {
+      Alert.alert(
+        'Deactivate User',
+        `Are you sure you want to deactivate ${userItem.name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Deactivate',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await api.deactivateUser(userItem.id);
+                loadData();
+                showAlert('Success', 'User deactivated');
+              } catch (error: any) {
+                showAlert('Error', error.response?.data?.detail || 'Failed to deactivate');
+              }
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   // Route Management
@@ -253,11 +270,11 @@ export default function AdminDashboard() {
 
   const saveRoute = async () => {
     if (!routeForm.name) {
-      Alert.alert('Error', 'Route name is required');
+      showAlert('Error', 'Route name is required');
       return;
     }
     if (!routeForm.province) {
-      Alert.alert('Error', 'Please select a province');
+      showAlert('Error', 'Please select a province');
       return;
     }
 
@@ -283,9 +300,9 @@ export default function AdminDashboard() {
       }
       setRouteModalVisible(false);
       loadData();
-      Alert.alert('Success', editingItem ? 'Route updated' : 'Route created');
+      showAlert('Success', editingItem ? 'Route updated' : 'Route created');
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to save route');
+      showAlert('Error', error.response?.data?.detail || 'Failed to save route');
     } finally {
       setSaving(false);
     }
@@ -310,9 +327,18 @@ export default function AdminDashboard() {
     setCustomerModalVisible(true);
   };
 
+  // Helper for web-compatible alerts
+  const showAlert = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}: ${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
   const saveCustomer = async () => {
     if (!customerForm.name) {
-      Alert.alert('Error', 'Customer name is required');
+      showAlert('Error', 'Customer name is required');
       return;
     }
 
@@ -330,9 +356,9 @@ export default function AdminDashboard() {
       }
       setCustomerModalVisible(false);
       loadData();
-      Alert.alert('Success', editingItem ? 'Customer updated' : 'Customer created');
+      showAlert('Success', editingItem ? 'Customer updated' : 'Customer created');
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to save customer');
+      showAlert('Error', error.response?.data?.detail || 'Failed to save customer');
     } finally {
       setSaving(false);
     }
@@ -357,7 +383,7 @@ export default function AdminDashboard() {
 
   const saveVehicle = async () => {
     if (!vehicleForm.name || !vehicleForm.registration) {
-      Alert.alert('Error', 'Name and registration are required');
+      showAlert('Error', 'Name and registration are required');
       return;
     }
 
@@ -375,35 +401,47 @@ export default function AdminDashboard() {
       }
       setVehicleModalVisible(false);
       loadData();
-      Alert.alert('Success', editingItem ? 'Vehicle updated' : 'Vehicle added');
+      showAlert('Success', editingItem ? 'Vehicle updated' : 'Vehicle added');
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to save vehicle');
+      showAlert('Error', error.response?.data?.detail || 'Failed to save vehicle');
     } finally {
       setSaving(false);
     }
   };
 
   const deactivateVehicle = (vehicleItem: any) => {
-    Alert.alert(
-      'Deactivate Vehicle',
-      `Are you sure you want to deactivate ${vehicleItem.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Deactivate',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.deactivateVehicle(vehicleItem.id);
-              loadData();
-              Alert.alert('Success', 'Vehicle deactivated');
-            } catch (error: any) {
-              Alert.alert('Error', error.response?.data?.detail || 'Failed to deactivate');
-            }
+    if (Platform.OS === 'web') {
+      const proceed = window.confirm(`Are you sure you want to deactivate ${vehicleItem.name}?`);
+      if (proceed) {
+        api.deactivateVehicle(vehicleItem.id).then(() => {
+          loadData();
+          showAlert('Success', 'Vehicle deactivated');
+        }).catch((error: any) => {
+          showAlert('Error', error.response?.data?.detail || 'Failed to deactivate');
+        });
+      }
+    } else {
+      Alert.alert(
+        'Deactivate Vehicle',
+        `Are you sure you want to deactivate ${vehicleItem.name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Deactivate',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await api.deactivateVehicle(vehicleItem.id);
+                loadData();
+                showAlert('Success', 'Vehicle deactivated');
+              } catch (error: any) {
+                showAlert('Error', error.response?.data?.detail || 'Failed to deactivate');
+              }
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const getRoleBadgeColor = (role: string) => {

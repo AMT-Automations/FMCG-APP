@@ -135,7 +135,11 @@ export default function ShopScreen() {
 
   const handleSubmitOrder = async () => {
     if (cart.length === 0) {
-      Alert.alert('Empty Cart', 'Please add items to your cart before ordering.');
+      if (Platform.OS === 'web') {
+        window.alert('Please add items to your cart before ordering.');
+      } else {
+        Alert.alert('Empty Cart', 'Please add items to your cart before ordering.');
+      }
       return;
     }
     if (!selectedCompany) {
@@ -143,48 +147,65 @@ export default function ShopScreen() {
       return;
     }
 
-    Alert.alert(
-      'Confirm Order',
-      `Place order for ${getCartCount()} items from ${selectedCompany.name} totaling R${getCartTotal().toFixed(2)}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Place Order',
-          onPress: async () => {
-            setSubmitting(true);
-            try {
-              const orderData = {
-                company_id: selectedCompany.id,
-                items: cart.map((c) => ({
-                  product_id: c.product.id,
-                  product_name: c.product.name,
-                  quantity: c.quantity,
-                  unit_price: c.product.price,
-                })),
-                notes: orderNotes || undefined,
-              };
-              const result = await api.createOrder(orderData);
-              if (result.error) {
-                Alert.alert('Order Failed', result.message);
-              } else {
-                setCart([]);
-                setOrderNotes('');
-                setMode('companies');
-                router.push({
-                  pathname: '/order-confirmation',
-                  params: { orderId: result.id || result._id },
-                });
-              }
-            } catch (error: any) {
-              const msg = error.response?.data?.detail || 'Failed to place order';
-              Alert.alert('Error', msg);
-            } finally {
-              setSubmitting(false);
-            }
-          },
-        },
-      ]
-    );
+    if (Platform.OS === 'web') {
+      const proceed = window.confirm(
+        `Place order for ${getCartCount()} items from ${selectedCompany.name} totaling R${getCartTotal().toFixed(2)}?`
+      );
+      if (proceed) {
+        await placeOrderNow();
+      }
+    } else {
+      Alert.alert(
+        'Confirm Order',
+        `Place order for ${getCartCount()} items from ${selectedCompany.name} totaling R${getCartTotal().toFixed(2)}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Place Order', onPress: placeOrderNow },
+        ]
+      );
+    }
+  };
+
+  const placeOrderNow = async () => {
+    if (!selectedCompany) return;
+    setSubmitting(true);
+    try {
+      const orderData = {
+        company_id: selectedCompany.id,
+        items: cart.map((c) => ({
+          product_id: c.product.id,
+          product_name: c.product.name,
+          quantity: c.quantity,
+          unit_price: c.product.price,
+        })),
+        notes: orderNotes || undefined,
+      };
+      const result = await api.createOrder(orderData);
+      if (result.error) {
+        if (Platform.OS === 'web') {
+          window.alert(result.message);
+        } else {
+          Alert.alert('Order Failed', result.message);
+        }
+      } else {
+        setCart([]);
+        setOrderNotes('');
+        setMode('companies');
+        router.push({
+          pathname: '/order-confirmation',
+          params: { orderId: result.id || result._id },
+        });
+      }
+    } catch (error: any) {
+      const msg = error.response?.data?.detail || 'Failed to place order';
+      if (Platform.OS === 'web') {
+        window.alert('Error: ' + msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const filteredProducts = products.filter(
@@ -610,8 +631,10 @@ const styles = StyleSheet.create({
   floatingCart: {
     position: 'absolute', bottom: Platform.OS === 'ios' ? 100 : 80, left: 16, right: 16,
     backgroundColor: '#10B981', borderRadius: 16, elevation: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8,
+    ...Platform.select({
+      web: { boxShadow: '0 4px 8px rgba(0,0,0,0.3)' },
+      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+    }),
   },
   floatingCartContent: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

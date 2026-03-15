@@ -272,7 +272,7 @@ export default function HomeScreen() {
           <View style={styles.actionsGrid}>
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() => router.push('/(tabs)/route')}
+              onPress={() => router.push('/admin')}
             >
               <View style={[styles.actionIcon, { backgroundColor: '#1E3A5F' }]}>
                 <Ionicons name="people" size={24} color="#3B82F6" />

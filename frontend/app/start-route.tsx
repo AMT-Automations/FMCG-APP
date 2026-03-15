@@ -232,44 +232,78 @@ export default function StartRouteScreen() {
 
   const handleStart = async () => {
     if (!selectedRoute) {
-      Alert.alert('Error', 'Please select a route');
+      if (Platform.OS === 'web') {
+        window.alert('Please select a route');
+      } else {
+        Alert.alert('Error', 'Please select a route');
+      }
       return;
     }
     if (!selectedVehicle) {
-      Alert.alert('Error', 'Please select a vehicle');
+      if (Platform.OS === 'web') {
+        window.alert('Please select a vehicle');
+      } else {
+        Alert.alert('Error', 'Please select a vehicle');
+      }
       return;
     }
     if (!openingKm) {
-      Alert.alert('Error', 'Please enter opening kilometers');
+      if (Platform.OS === 'web') {
+        window.alert('Please enter opening kilometers');
+      } else {
+        Alert.alert('Error', 'Please enter opening kilometers');
+      }
       return;
     }
     if (!cratesOut) {
-      Alert.alert('Error', 'Please enter crates out');
+      if (Platform.OS === 'web') {
+        window.alert('Please enter crates out');
+      } else {
+        Alert.alert('Error', 'Please enter crates out');
+      }
       return;
     }
 
     const summary = getInspectionSummary();
     if (summary.unchecked > 0) {
-      Alert.alert(
-        'Incomplete Inspection',
-        `You have ${summary.unchecked} unchecked items. Do you want to continue anyway?`,
-        [
-          { text: 'Go Back', style: 'cancel' },
-          { text: 'Continue', onPress: () => doStart() },
-        ]
-      );
+      if (Platform.OS === 'web') {
+        const proceed = window.confirm(
+          `You have ${summary.unchecked} unchecked items. Do you want to continue anyway?`
+        );
+        if (proceed) {
+          doStart();
+        }
+      } else {
+        Alert.alert(
+          'Incomplete Inspection',
+          `You have ${summary.unchecked} unchecked items. Do you want to continue anyway?`,
+          [
+            { text: 'Go Back', style: 'cancel' },
+            { text: 'Continue', onPress: () => doStart() },
+          ]
+        );
+      }
       return;
     }
 
     if (summary.failed > 0) {
-      Alert.alert(
-        'Failed Inspection Items',
-        `${summary.failed} item(s) failed inspection. Are you sure you want to start the route?`,
-        [
-          { text: 'Go Back', style: 'cancel' },
-          { text: 'Start Anyway', style: 'destructive', onPress: () => doStart() },
-        ]
-      );
+      if (Platform.OS === 'web') {
+        const proceed = window.confirm(
+          `${summary.failed} item(s) failed inspection. Are you sure you want to start the route?`
+        );
+        if (proceed) {
+          doStart();
+        }
+      } else {
+        Alert.alert(
+          'Failed Inspection Items',
+          `${summary.failed} item(s) failed inspection. Are you sure you want to start the route?`,
+          [
+            { text: 'Go Back', style: 'cancel' },
+            { text: 'Start Anyway', style: 'destructive', onPress: () => doStart() },
+          ]
+        );
+      }
       return;
     }
 
@@ -283,12 +317,20 @@ export default function StartRouteScreen() {
         route_id: selectedRoute!.id,
         vehicle_id: selectedVehicle!.id,
         opening_km: parseFloat(openingKm),
-        crates_out: parseInt(cratesOut),
+        crates_out: parseInt(cratesOut) || 0,
         vehicle_check: buildVehicleCheck(),
       });
+      if (Platform.OS === 'web') {
+        window.alert('Route started successfully!');
+      }
       router.back();
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to start route');
+      const msg = error.response?.data?.detail || 'Failed to start route';
+      if (Platform.OS === 'web') {
+        window.alert('Error: ' + msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
     } finally {
       setStarting(false);
     }
