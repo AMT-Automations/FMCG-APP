@@ -36,6 +36,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadStoredAuth();
+
+    // Auto-logout on 401 (stale/invalid token)
+    const interceptorId = api.client.interceptors.response.use(
+      (response: any) => response,
+      async (error: any) => {
+        if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
+          // Token is invalid - clear everything and force re-login
+          setUser(null);
+          setToken(null);
+          api.setToken(null);
+          try {
+            await AsyncStorage.multiRemove(['auth_token', 'auth_user']);
+          } catch (e) {}
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      api.client.interceptors.response.eject(interceptorId);
+    };
   }, []);
 
   const loadStoredAuth = async () => {

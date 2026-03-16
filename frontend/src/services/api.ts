@@ -35,6 +35,24 @@ class ApiService {
       }
       return config;
     });
+
+    // CRITICAL: Response interceptor - auto-clear stale tokens on 401
+    this.client.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        if (error.response?.status === 401 && error.config?.url !== '/auth/login') {
+          // Token is stale/invalid - clear it so user gets redirected to login
+          this.token = null;
+          try {
+            await AsyncStorage.removeItem('auth_token');
+            await AsyncStorage.removeItem('auth_user');
+          } catch (e) {
+            // ignore
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
   }
 
   setToken(token: string | null) {
