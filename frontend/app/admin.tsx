@@ -22,7 +22,7 @@ const VEHICLE_TYPES = ['truck', 'van', 'bakkie'];
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'users' | 'routes' | 'customers' | 'vehicles'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [routes, setRoutes] = useState<any[]>([]);
@@ -59,7 +59,8 @@ export default function AdminDashboard() {
   });
 
   useEffect(() => {
-    if (user?.role !== 'admin' && user?.role !== 'manager') {
+    if (authLoading) return; // Wait for auth token to be restored
+    if (!user || (user.role !== 'admin' && user.role !== 'manager')) {
       if (Platform.OS === 'web') {
         window.alert('Access Denied: You do not have permission to access this page');
       } else {
@@ -69,7 +70,7 @@ export default function AdminDashboard() {
       return;
     }
     loadData();
-  }, []);
+  }, [authLoading, user]);
 
   const loadData = async () => {
     try {

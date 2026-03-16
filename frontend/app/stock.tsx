@@ -42,7 +42,7 @@ interface StockMovement {
 
 export default function StockManagement() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'levels' | 'receive' | 'adjust' | 'take' | 'history'>('levels');
   const [stockLevels, setStockLevels] = useState<StockLevel[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
@@ -73,13 +73,14 @@ export default function StockManagement() {
   const [takeForm, setTakeForm] = useState({ physical_count: '', variance_reason: '' });
 
   useEffect(() => {
-    if (user?.role !== 'admin' && user?.role !== 'manager') {
+    if (authLoading) return;
+    if (!user || (user.role !== 'admin' && user.role !== 'manager')) {
       Alert.alert('Access Denied', 'Only admin/manager can access stock management');
       router.back();
       return;
     }
     loadData();
-  }, []);
+  }, [authLoading, user]);
 
   const loadData = async () => {
     try {

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Get backend URL from environment - required for production
 const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -16,7 +17,19 @@ class ApiService {
   });
 
   constructor() {
-    this.client.interceptors.request.use((config) => {
+    // CRITICAL: Async interceptor that always ensures token is available
+    this.client.interceptors.request.use(async (config) => {
+      // If token not in memory, try restoring from AsyncStorage
+      if (!this.token) {
+        try {
+          const storedToken = await AsyncStorage.getItem('auth_token');
+          if (storedToken) {
+            this.token = storedToken;
+          }
+        } catch (e) {
+          // Ignore storage errors
+        }
+      }
       if (this.token) {
         config.headers.Authorization = `Bearer ${this.token}`;
       }

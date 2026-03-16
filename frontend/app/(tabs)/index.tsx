@@ -16,7 +16,7 @@ import { api } from '../../src/services/api';
 import { LogoHeader } from '../../src/components/LogoHeader';
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [activeRoutes, setActiveRoutes] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
@@ -42,8 +42,10 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
-    }, [])
+      if (!authLoading && user) {
+        loadData();
+      }
+    }, [authLoading, user])
   );
 
   const onRefresh = () => {
