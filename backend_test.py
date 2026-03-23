@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Backend URL from frontend/.env
-BASE_URL = "https://distributor-connect-4.preview.emergentagent.com/api"
+BASE_URL = "https://expo-production-2.preview.emergentagent.com/api"
 
 def print_test_header(test_name):
     print(f"\n{'='*60}")

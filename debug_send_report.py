@@ -7,7 +7,7 @@ import requests
 import json
 
 # Backend URL from environment
-BASE_URL = "https://distributor-connect-4.preview.emergentagent.com/api"
+BASE_URL = "https://expo-production-2.preview.emergentagent.com/api"
 ADMIN_CREDS = {"phone": "0800000001", "pin": "0000"}
 
 def login_user(credentials):

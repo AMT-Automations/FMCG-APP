@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 FINAL RE-TEST: 16-Phase Integration Test for Customer Ordering System
-Backend URL: https://distributor-connect-4.preview.emergentagent.com/api
+Backend URL: https://expo-production-2.preview.emergentagent.com/api
 
 Following the exact specification from the review request:
 - Must achieve 16/16 phases 
@@ -35,7 +35,7 @@ import time
 import random
 
 # Configuration
-BASE_URL = "https://distributor-connect-4.preview.emergentagent.com/api"
+BASE_URL = "https://expo-production-2.preview.emergentagent.com/api"
 HEADERS = {"Content-Type": "application/json"}
 
 # Generate unique suffix to avoid phone number conflicts
