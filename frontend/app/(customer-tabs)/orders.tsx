@@ -178,6 +178,26 @@ export default function OrdersScreen() {
                   ) : null}
                   <Text style={styles.orderTotal}>R{order.total_amount.toFixed(2)}</Text>
                 </View>
+
+                {/* Track Order Button */}
+                {order.status !== 'cancelled' && order.status !== 'delivered' && (
+                  <TouchableOpacity
+                    style={styles.trackBtn}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      router.push({ pathname: '/order-tracking', params: { orderId: order.id } });
+                    }}
+                  >
+                    <Ionicons name="navigate-outline" size={16} color="#3B82F6" />
+                    <Text style={styles.trackBtnText}>Track Order</Text>
+                  </TouchableOpacity>
+                )}
+                {order.status === 'delivered' && (
+                  <View style={styles.deliveredTag}>
+                    <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                    <Text style={styles.deliveredTagText}>Delivered</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })
@@ -229,4 +249,15 @@ const styles = StyleSheet.create({
   deliveryTag: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   deliveryTagText: { fontSize: 13, color: '#64748B' },
   orderTotal: { fontSize: 18, fontWeight: '800', color: '#10B981' },
+  trackBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: '#1E3A5F', borderRadius: 8, paddingVertical: 10, marginTop: 12,
+    borderWidth: 1, borderColor: '#3B82F6',
+  },
+  trackBtnText: { color: '#3B82F6', fontSize: 14, fontWeight: '700' },
+  deliveredTag: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: '#064E3B', borderRadius: 8, paddingVertical: 8, marginTop: 12,
+  },
+  deliveredTagText: { color: '#10B981', fontSize: 13, fontWeight: '600' },
 });

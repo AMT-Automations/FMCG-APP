@@ -655,6 +655,38 @@ class ApiService {
     const response = await this.client.get(`/routes/${routeId}/schedule`);
     return response.data;
   }
+
+  // ==================== DELIVERY TRACKING (P2) ====================
+
+  // Driver: Update GPS location during active route
+  async updateDriverLocation(dailyRouteId: string, data: { latitude: number; longitude: number; accuracy?: number; speed?: number; heading?: number }) {
+    const response = await this.client.post(`/daily-routes/${dailyRouteId}/location`, data);
+    return response.data;
+  }
+
+  // Get driver's current location for a route
+  async getDriverLocation(dailyRouteId: string) {
+    const response = await this.client.get(`/daily-routes/${dailyRouteId}/location`);
+    return response.data;
+  }
+
+  // Customer: Get full order tracking info
+  async getOrderTracking(orderId: string) {
+    const response = await this.client.get(`/orders/${orderId}/tracking`);
+    return response.data;
+  }
+
+  // Driver/Admin: Batch update order statuses
+  async batchUpdateOrderStatus(orderIds: string[], status: string) {
+    const response = await this.client.put('/orders/batch-status', { order_ids: orderIds, status });
+    return response.data;
+  }
+
+  // Driver: Get all orders for delivery on a daily route
+  async getRouteDeliveries(dailyRouteId: string) {
+    const response = await this.client.get(`/daily-routes/${dailyRouteId}/deliveries`);
+    return response.data;
+  }
 }
 
 export const api = new ApiService();

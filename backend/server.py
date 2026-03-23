@@ -3612,33 +3612,54 @@ def generate_order_number(company_name: str) -> str:
     seq = random.randint(1, 999)
     return f"{code}-{date_str}-{seq:03d}"
 
-def get_next_delivery_day(delivery_days: List[str], cut_off_hours: int = 16) -> Optional[dict]:
-    """Calculate the next delivery day and whether ordering is still open"""
+def get_next_delivery_day(delivery_days: List[str], cut_off_hours: int = 16, cut_off_time_str: str = None) -> Optional[dict]:
+    """Calculate the next delivery day and whether ordering is still open.
+    
+    Supports both:
+    - cut_off_hours: hours before delivery day to cut off (legacy)
+    - cut_off_time_str: specific time on the day before delivery, e.g. "16:00" (preferred)
+    """
     if not delivery_days:
         return None
     
     now = datetime.utcnow()
     today_name = now.strftime("%A")
     
-    # Build ordered list of delivery days from today
     day_indices = {d: i for i, d in enumerate(DAYS_OF_WEEK)}
     today_idx = day_indices.get(today_name, 0)
+    
+    def calc_cutoff(delivery_date_obj, offset):
+        """Calculate cut-off datetime. If cut_off_time_str given, use day-before at that time."""
+        if cut_off_time_str:
+            try:
+                hour, minute = map(int, cut_off_time_str.split(":"))
+                # Cut-off is the day before delivery at the specified time
+                cutoff_day = delivery_date_obj - timedelta(days=1)
+                return cutoff_day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            except (ValueError, AttributeError):
+                pass
+        return delivery_date_obj - timedelta(hours=cut_off_hours)
     
     for offset in range(0, 8):
         check_idx = (today_idx + offset) % 7
         check_day = DAYS_OF_WEEK[check_idx]
         
         if check_day in delivery_days:
-            delivery_date = now + timedelta(days=offset)
-            cut_off_date = delivery_date - timedelta(hours=cut_off_hours)
+            delivery_date = (now + timedelta(days=offset)).replace(hour=8, minute=0, second=0, microsecond=0)
+            cut_off_date = calc_cutoff(delivery_date, offset)
             
             if now < cut_off_date:
+                seconds_left = (cut_off_date - now).total_seconds()
+                hours_left = seconds_left / 3600
                 return {
                     "delivery_day": check_day,
                     "delivery_date": delivery_date.strftime("%Y-%m-%d"),
                     "cut_off_time": cut_off_date.isoformat(),
+                    "cut_off_display": cut_off_date.strftime("%A %d %b, %H:%M"),
                     "is_open": True,
-                    "hours_until_cutoff": max(0, (cut_off_date - now).total_seconds() / 3600)
+                    "hours_until_cutoff": max(0, hours_left),
+                    "minutes_until_cutoff": max(0, int(seconds_left / 60)),
+                    "cutoff_message": f"Orders close {cut_off_date.strftime('%A at %H:%M')} for {check_day} delivery"
                 }
     
     # All cut-offs passed, find next week's first delivery
@@ -3646,14 +3667,19 @@ def get_next_delivery_day(delivery_days: List[str], cut_off_hours: int = 16) -> 
         check_idx = (today_idx + offset) % 7
         check_day = DAYS_OF_WEEK[check_idx]
         if check_day in delivery_days:
-            delivery_date = now + timedelta(days=offset + 7)
-            cut_off_date = delivery_date - timedelta(hours=cut_off_hours)
+            delivery_date = (now + timedelta(days=offset + 7)).replace(hour=8, minute=0, second=0, microsecond=0)
+            cut_off_date = calc_cutoff(delivery_date, offset + 7)
+            is_open = now < cut_off_date
+            seconds_left = max(0, (cut_off_date - now).total_seconds())
             return {
                 "delivery_day": check_day,
                 "delivery_date": delivery_date.strftime("%Y-%m-%d"),
                 "cut_off_time": cut_off_date.isoformat(),
-                "is_open": now < cut_off_date,
-                "hours_until_cutoff": max(0, (cut_off_date - now).total_seconds() / 3600)
+                "cut_off_display": cut_off_date.strftime("%A %d %b, %H:%M"),
+                "is_open": is_open,
+                "hours_until_cutoff": max(0, seconds_left / 3600),
+                "minutes_until_cutoff": max(0, int(seconds_left / 60)),
+                "cutoff_message": f"Orders close {cut_off_date.strftime('%A at %H:%M')} for {check_day} delivery" if is_open else f"Next ordering window opens soon for {check_day} delivery"
             }
     
     return None
@@ -3794,7 +3820,8 @@ async def update_route_schedule(route_id: str, schedule: DeliverySchedule, curre
     # Return the updated schedule with delivery info
     delivery_info = get_next_delivery_day(
         schedule.delivery_days,
-        schedule.cut_off_hours_before or 16
+        schedule.cut_off_hours_before or 16,
+        schedule.cut_off_time or "16:00"
     )
     return {
         "message": "Delivery schedule updated",
@@ -3818,7 +3845,8 @@ async def get_route_schedule(route_id: str, current_user: dict = Depends(get_cur
     schedule = route.get("delivery_schedule", {"delivery_days": [], "cut_off_hours_before": 16, "cut_off_time": "16:00"})
     delivery_info = get_next_delivery_day(
         schedule.get("delivery_days", []),
-        schedule.get("cut_off_hours_before", 16)
+        schedule.get("cut_off_hours_before", 16),
+        schedule.get("cut_off_time", "16:00")
     )
     
     return {
@@ -3937,7 +3965,8 @@ async def get_customer_company_products(company_id: str, current_user: dict = De
         schedule = matching_route.get("delivery_schedule", {})
         delivery_info = get_next_delivery_day(
             schedule.get("delivery_days", []),
-            schedule.get("cut_off_hours_before", 16)
+            schedule.get("cut_off_hours_before", 16),
+            schedule.get("cut_off_time", "16:00")
         )
     
     return {
@@ -4022,10 +4051,15 @@ async def create_order(order: OrderCreate, current_user: dict = Depends(get_curr
         schedule = matching_route.get("delivery_schedule", {})
         delivery_days = schedule.get("delivery_days", [])
         cut_off_hours = schedule.get("cut_off_hours_before", 16)
-        delivery_info = get_next_delivery_day(delivery_days, cut_off_hours)
+        cut_off_time_str = schedule.get("cut_off_time", "16:00")
+        delivery_info = get_next_delivery_day(delivery_days, cut_off_hours, cut_off_time_str)
         
         if delivery_info and not delivery_info.get("is_open", True):
-            return {"error": True, "message": f"Orders for the next delivery are closed. Next delivery: {delivery_info.get('delivery_day', 'TBD')}"}
+            return {
+                "error": True, 
+                "message": f"Orders for the next delivery are closed. {delivery_info.get('cutoff_message', '')}",
+                "next_delivery": delivery_info
+            }
     
     # Check for duplicate orders (same customer, same company, same day)
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -4283,7 +4317,211 @@ async def get_route_packing_summary(route_id: str, current_user: dict = Depends(
         "products": list(product_totals.values()),
     }
 
-# ==================== SUPPORT INFO ====================
+# ==================== DELIVERY TRACKING (P2) ====================
+
+class LocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
+    accuracy: Optional[float] = None
+    speed: Optional[float] = None
+    heading: Optional[float] = None
+
+@api_router.post("/daily-routes/{route_id}/location")
+async def update_driver_location(route_id: str, location: LocationUpdate, current_user: dict = Depends(get_current_user)):
+    """Driver updates GPS location during active route"""
+    try:
+        daily_route = await db.daily_routes.find_one({"_id": ObjectId(route_id), "status": "active"})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid route ID")
+    
+    if not daily_route:
+        raise HTTPException(status_code=404, detail="Active route not found")
+    
+    if daily_route.get("driver_id") != current_user["id"] and not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Not your route")
+    
+    loc_entry = {
+        "latitude": location.latitude,
+        "longitude": location.longitude,
+        "accuracy": location.accuracy,
+        "speed": location.speed,
+        "heading": location.heading,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    await db.daily_routes.update_one(
+        {"_id": ObjectId(route_id)},
+        {
+            "$set": {"current_location": loc_entry, "location_updated_at": datetime.utcnow()},
+            "$push": {"location_history": {"$each": [loc_entry], "$slice": -100}}  # Keep last 100 points
+        }
+    )
+    
+    return {"message": "Location updated", "location": loc_entry}
+
+@api_router.get("/daily-routes/{route_id}/location")
+async def get_driver_location(route_id: str, current_user: dict = Depends(get_current_user)):
+    """Get driver's current location for an active route"""
+    try:
+        daily_route = await db.daily_routes.find_one({"_id": ObjectId(route_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid route ID")
+    
+    if not daily_route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    
+    return {
+        "route_id": route_id,
+        "driver_name": daily_route.get("driver_name", ""),
+        "vehicle_name": daily_route.get("vehicle_name", ""),
+        "vehicle_registration": daily_route.get("vehicle_registration", ""),
+        "status": daily_route.get("status", ""),
+        "current_location": daily_route.get("current_location"),
+        "location_updated_at": daily_route.get("location_updated_at", "").isoformat() if isinstance(daily_route.get("location_updated_at"), datetime) else daily_route.get("location_updated_at", ""),
+        "sales_count": daily_route.get("sales_count", 0),
+    }
+
+@api_router.get("/orders/{order_id}/tracking")
+async def get_order_tracking(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Customer gets full tracking info for their order"""
+    try:
+        order = await db.orders.find_one({"_id": ObjectId(order_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid order ID")
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Customer can only see their own orders
+    if is_customer(current_user) and order.get("customer_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    tracking = {
+        "order_id": str(order["_id"]),
+        "order_number": order.get("order_number", ""),
+        "status": order.get("status", ""),
+        "status_history": order.get("status_history", []),
+        "delivery_day": order.get("delivery_day", ""),
+        "delivery_date": order.get("delivery_date", ""),
+        "items": order.get("items", []),
+        "total_amount": order.get("total_amount", 0),
+        "company_name": order.get("company_name", ""),
+        "route_name": order.get("route_name", ""),
+        "driver_info": None,
+        "current_location": None,
+        "estimated_delivery": None,
+    }
+    
+    # If out for delivery, find the active daily route and get driver/location info
+    if order.get("status") in ["out_for_delivery", "packed"]:
+        route_id = order.get("route_id", "")
+        if route_id:
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            active_route = await db.daily_routes.find_one({
+                "route_id": route_id,
+                "date": today,
+                "status": "active"
+            })
+            if active_route:
+                tracking["driver_info"] = {
+                    "name": active_route.get("driver_name", ""),
+                    "vehicle": active_route.get("vehicle_name", ""),
+                    "registration": active_route.get("vehicle_registration", ""),
+                    "started_at": active_route.get("started_at", "").isoformat() if isinstance(active_route.get("started_at"), datetime) else str(active_route.get("started_at", "")),
+                }
+                tracking["current_location"] = active_route.get("current_location")
+                loc_time = active_route.get("location_updated_at")
+                tracking["location_updated_at"] = loc_time.isoformat() if isinstance(loc_time, datetime) else str(loc_time or "")
+                
+                # Calculate stops info
+                total_orders_on_route = await db.orders.count_documents({
+                    "route_id": route_id,
+                    "delivery_date": order.get("delivery_date", ""),
+                    "status": {"$in": ["confirmed", "adjusted", "packed", "out_for_delivery"]}
+                })
+                delivered_on_route = await db.orders.count_documents({
+                    "route_id": route_id,
+                    "delivery_date": order.get("delivery_date", ""),
+                    "status": "delivered"
+                })
+                tracking["delivery_progress"] = {
+                    "total_stops": total_orders_on_route + delivered_on_route,
+                    "completed_stops": delivered_on_route,
+                    "remaining_stops": total_orders_on_route,
+                }
+    
+    return tracking
+
+@api_router.put("/orders/batch-status")
+async def batch_update_order_status(
+    order_ids: List[str] = Body(..., embed=True),
+    status: str = Body(..., embed=True),
+    current_user: dict = Depends(get_current_user)
+):
+    """Driver/Admin batch-updates order statuses (e.g., mark all route orders as out_for_delivery)"""
+    if is_customer(current_user):
+        raise HTTPException(status_code=403, detail="Distributor/Driver access only")
+    
+    if status not in ORDER_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {ORDER_STATUSES}")
+    
+    updated = 0
+    for oid in order_ids:
+        try:
+            result = await db.orders.update_one(
+                {"_id": ObjectId(oid)},
+                {
+                    "$set": {"status": status, "updated_at": datetime.utcnow()},
+                    "$push": {"status_history": {"status": status, "timestamp": datetime.utcnow().isoformat(), "by": current_user["id"]}}
+                }
+            )
+            if result.modified_count > 0:
+                updated += 1
+        except Exception:
+            continue
+    
+    return {"message": f"{updated} orders updated to {status}", "updated_count": updated}
+
+@api_router.get("/daily-routes/{route_id}/deliveries")
+async def get_route_deliveries(route_id: str, current_user: dict = Depends(get_current_user)):
+    """Get all orders for a daily route for delivery management by the driver"""
+    try:
+        daily_route = await db.daily_routes.find_one({"_id": ObjectId(route_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid route ID")
+    
+    if not daily_route:
+        raise HTTPException(status_code=404, detail="Daily route not found")
+    
+    route_id_ref = daily_route.get("route_id", "")
+    delivery_date = daily_route.get("date", "")
+    
+    # Get orders for this route and delivery date
+    orders = await db.orders.find({
+        "route_id": route_id_ref,
+        "delivery_date": delivery_date,
+        "status": {"$nin": ["cancelled"]}
+    }).sort("customer_name", 1).to_list(500)
+    
+    # Group by status
+    summary = {
+        "total": len(orders),
+        "pending": len([o for o in orders if o.get("status") == "pending"]),
+        "confirmed": len([o for o in orders if o.get("status") == "confirmed"]),
+        "packed": len([o for o in orders if o.get("status") == "packed"]),
+        "out_for_delivery": len([o for o in orders if o.get("status") == "out_for_delivery"]),
+        "delivered": len([o for o in orders if o.get("status") == "delivered"]),
+    }
+    
+    return {
+        "daily_route_id": str(daily_route["_id"]),
+        "route_name": daily_route.get("route_name", ""),
+        "date": delivery_date,
+        "driver_name": daily_route.get("driver_name", ""),
+        "vehicle_name": daily_route.get("vehicle_name", ""),
+        "summary": summary,
+        "orders": [str_id(o) for o in orders],
+    }
 
 @api_router.get("/support-info")
 async def get_support_info():

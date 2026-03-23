@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mzafri.tracker"
+      "bundleIdentifier": "com.mzafri.tracker",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Track delivery routes in real-time"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +21,8 @@
         "backgroundColor": "#0F172A"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.mzafri.tracker"
+      "package": "com.mzafri.tracker",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
     },
     "web": {
       "bundler": "metro",
@@ -27,6 +31,12 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Track delivery routes in real-time"
+        }
+      ],
       [
         "expo-splash-screen",
         {

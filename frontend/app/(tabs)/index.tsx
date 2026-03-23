@@ -176,13 +176,23 @@ export default function HomeScreen() {
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.continueButton}
-                  onPress={() => handleSelectRoute(route)}
-                >
-                  <Ionicons name="navigate" size={18} color="#FFFFFF" />
-                  <Text style={styles.continueButtonText}>Continue Route</Text>
-                </TouchableOpacity>
+                <View style={styles.routeActions}>
+                  <TouchableOpacity
+                    style={styles.continueButton}
+                    onPress={() => handleSelectRoute(route)}
+                  >
+                    <Ionicons name="navigate" size={18} color="#FFFFFF" />
+                    <Text style={styles.continueButtonText}>Continue Route</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.deliveriesButton}
+                    onPress={() => router.push({ pathname: '/route-deliveries', params: { dailyRouteId: route.id } })}
+                  >
+                    <Ionicons name="cube-outline" size={18} color="#F97316" />
+                    <Text style={styles.deliveriesButtonText}>Deliveries</Text>
+                  </TouchableOpacity>
+                </View>
               </TouchableOpacity>
             ))}
 
@@ -516,9 +526,31 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 12,
     gap: 8,
+    flex: 1,
   },
   continueButtonText: {
     color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  routeActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  deliveriesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#F97316',
+  },
+  deliveriesButtonText: {
+    color: '#F97316',
     fontSize: 14,
     fontWeight: '600',
   },

@@ -354,14 +354,26 @@ export default function ShopScreen() {
             />
             <View style={{ marginLeft: 10, flex: 1 }}>
               <Text style={styles.deliveryBannerTitle}>
-                Next: {nextDelivery.delivery_day} ({nextDelivery.delivery_date})
+                {nextDelivery.is_open ? 'Delivery' : 'Next Delivery'}: {nextDelivery.delivery_day} ({nextDelivery.delivery_date})
               </Text>
-              <Text style={styles.deliveryBannerSub}>
-                {nextDelivery.is_open
-                  ? `Order open - ${Math.round(nextDelivery.hours_until_cutoff)}h until cutoff`
-                  : 'Ordering closed for this delivery'}
-              </Text>
+              {nextDelivery.is_open ? (
+                <Text style={styles.deliveryBannerSub}>
+                  {nextDelivery.minutes_until_cutoff > 60
+                    ? `${Math.floor(nextDelivery.minutes_until_cutoff / 60)}h ${nextDelivery.minutes_until_cutoff % 60}m until cut-off`
+                    : `${nextDelivery.minutes_until_cutoff}min until cut-off`}
+                  {nextDelivery.cut_off_display ? ` (${nextDelivery.cut_off_display})` : ''}
+                </Text>
+              ) : (
+                <Text style={[styles.deliveryBannerSub, { color: '#FCA5A5' }]}>
+                  {nextDelivery.cutoff_message || 'Ordering closed for this delivery'}
+                </Text>
+              )}
             </View>
+            {nextDelivery.is_open && nextDelivery.minutes_until_cutoff <= 120 && (
+              <View style={styles.urgentBadge}>
+                <Text style={styles.urgentText}>CLOSING SOON</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -585,6 +597,8 @@ const styles = StyleSheet.create({
   deliveryClosed: { backgroundColor: '#7F1D1D' },
   deliveryBannerTitle: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
   deliveryBannerSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  urgentBadge: { backgroundColor: '#DC2626', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginLeft: 8 },
+  urgentText: { color: '#fff', fontSize: 10, fontWeight: '800' },
 
   // Search
   searchContainer: {
