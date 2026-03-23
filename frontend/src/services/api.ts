@@ -9,7 +9,7 @@ if (!BASE_URL) {
 
 class ApiService {
   private token: string | null = null;
-  private client = axios.create({
+  public client = axios.create({
     baseURL: `${BASE_URL || ''}/api`,
     headers: {
       'Content-Type': 'application/json',
