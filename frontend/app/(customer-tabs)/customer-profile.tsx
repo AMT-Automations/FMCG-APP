@@ -109,6 +109,16 @@ export default function CustomerProfileScreen() {
           </View>
         </View>
 
+        {/* Help / User Manual */}
+        <TouchableOpacity
+          style={styles.helpButton}
+          onPress={() => router.push('/user-manual')}
+        >
+          <Ionicons name="book-outline" size={20} color="#3B82F6" />
+          <Text style={styles.helpText}>User Manual & Help</Text>
+          <Ionicons name="chevron-forward" size={18} color="#475569" />
+        </TouchableOpacity>
+
         {/* Logout */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={22} color="#EF4444" />
@@ -160,5 +170,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#EF4444',
   },
   logoutText: { fontSize: 16, fontWeight: '600', color: '#EF4444' },
+  helpButton: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E293B',
+    borderRadius: 14, padding: 16, marginBottom: 12, gap: 10,
+    borderWidth: 1, borderColor: '#334155',
+  },
+  helpText: { fontSize: 16, fontWeight: '600', color: '#3B82F6', flex: 1 },
   version: { textAlign: 'center', color: '#475569', fontSize: 12, marginTop: 20 },
 });

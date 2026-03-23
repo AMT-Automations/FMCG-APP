@@ -262,6 +262,16 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Help / User Manual */}
+        <TouchableOpacity
+          style={styles.helpButton}
+          onPress={() => router.push('/user-manual')}
+        >
+          <Ionicons name="book-outline" size={20} color="#3B82F6" />
+          <Text style={styles.helpText}>User Manual & Help</Text>
+          <Ionicons name="chevron-forward" size={18} color="#475569" />
+        </TouchableOpacity>
+
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color="#EF4444" />
@@ -384,6 +394,24 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  helpButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+    gap: 10,
+  },
+  helpText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#3B82F6',
+    flex: 1,
   },
   logoutText: {
     fontSize: 16,
