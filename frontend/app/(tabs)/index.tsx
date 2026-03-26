@@ -265,26 +265,21 @@ export default function HomeScreen() {
               onPress={() => setShowAllStock(!showAllStock)}
               activeOpacity={0.7}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                <Ionicons name="cube" size={18} color="#10B981" />
-                <Text style={styles.sectionTitle}>My Vehicle Stock</Text>
-                <View style={styles.vehicleStockBadge}>
-                  <Text style={styles.vehicleStockBadgeText}>
-                    {vehicleStock.vehicle_name || 'Vehicle'}
-                  </Text>
-                </View>
+              <Ionicons name="cube" size={18} color="#10B981" />
+              <Text style={styles.vsTitle}>My Vehicle Stock</Text>
+              <View style={styles.vehicleStockBadge}>
+                <Text style={styles.vehicleStockBadgeText}>
+                  {vehicleStock.vehicle_name || 'Vehicle'}
+                </Text>
               </View>
-              <View style={styles.vsCompactStats}>
-                <Text style={styles.vsCompactLoaded}>{vehicleStock.total_loaded} loaded</Text>
-                <Text style={styles.vsCompactSep}>•</Text>
-                <Text style={styles.vsCompactRemaining}>{vehicleStock.total_remaining} left</Text>
-                <Ionicons
-                  name={showAllStock ? 'chevron-up' : 'chevron-down'}
-                  size={16}
-                  color="#64748B"
-                  style={{ marginLeft: 4 }}
-                />
-              </View>
+              <Text style={styles.vsCompactLoaded}>{vehicleStock.total_loaded} loaded</Text>
+              <Text style={styles.vsCompactSep}>•</Text>
+              <Text style={styles.vsCompactRemaining}>{vehicleStock.total_remaining} left</Text>
+              <Ionicons
+                name={showAllStock ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color="#64748B"
+              />
             </TouchableOpacity>
 
             {showAllStock && (
@@ -789,8 +784,15 @@ const styles = StyleSheet.create({
   vsHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     padding: 14,
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  vsTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   vehicleStockBadge: {
     backgroundColor: '#064E3B',
@@ -809,16 +811,16 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   vsCompactLoaded: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#94A3B8',
     fontWeight: '600',
   },
   vsCompactSep: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#475569',
   },
   vsCompactRemaining: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#F59E0B',
     fontWeight: '700',
   },
