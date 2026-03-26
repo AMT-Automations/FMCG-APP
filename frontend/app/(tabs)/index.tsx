@@ -269,7 +269,7 @@ export default function HomeScreen() {
               <Text style={styles.vsTitle}>My Vehicle Stock</Text>
               <View style={styles.vehicleStockBadge}>
                 <Text style={styles.vehicleStockBadgeText}>
-                  {vehicleStock.vehicle_name || 'Vehicle'}
+                  {vehicleStock.items.length} {vehicleStock.items.length === 1 ? 'product' : 'products'}
                 </Text>
               </View>
               <Text style={styles.vsCompactLoaded}>{vehicleStock.total_loaded} loaded</Text>
@@ -284,16 +284,30 @@ export default function HomeScreen() {
 
             {showAllStock && (
               <View style={styles.vsExpandedList}>
-                {vehicleStock.items.map((item: any, idx: number) => (
-                  <View key={idx} style={styles.vsItemCard}>
-                    <Text style={styles.vsItemName} numberOfLines={1}>{item.product_name}</Text>
-                    <View style={styles.vsItemStats}>
+                {/* Column headers */}
+                <View style={styles.vsColumnHeader}>
+                  <Text style={styles.vsColLabel}>Product</Text>
+                  <Text style={styles.vsColLabel}>Loaded</Text>
+                  <Text style={styles.vsColLabel}>Sold</Text>
+                  <Text style={styles.vsColLabel}>Left</Text>
+                </View>
+                <ScrollView style={styles.vsScrollList} nestedScrollEnabled>
+                  {vehicleStock.items.map((item: any, idx: number) => (
+                    <View key={idx} style={styles.vsItemCard}>
+                      <Text style={styles.vsItemName} numberOfLines={1}>{item.product_name}</Text>
                       <Text style={styles.vsItemLoaded}>{item.quantity_loaded}</Text>
-                      <Ionicons name="arrow-forward" size={12} color="#475569" />
+                      <Text style={styles.vsItemSold}>{item.quantity_sold || 0}</Text>
                       <Text style={styles.vsItemRemaining}>{item.quantity_remaining}</Text>
                     </View>
-                  </View>
-                ))}
+                  ))}
+                </ScrollView>
+                {/* Vehicle info footer */}
+                <View style={styles.vsFooter}>
+                  <Ionicons name="car" size={14} color="#64748B" />
+                  <Text style={styles.vsFooterText}>
+                    {vehicleStock.vehicle_name || 'Vehicle'} • {vehicleStock.route_name || 'Route'}
+                  </Text>
+                </View>
               </View>
             )}
           </View>
@@ -830,11 +844,27 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#334155',
   },
+  vsColumnHeader: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  vsColLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    flex: 1,
+    textAlign: 'center',
+  },
+  vsScrollList: {
+    maxHeight: 200,
+  },
   vsItemCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
     borderBottomColor: '#0F172A',
   },
@@ -843,7 +873,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#CBD5E1',
     flex: 1,
-    marginRight: 8,
   },
   vsItemStats: {
     flexDirection: 'row',
@@ -852,13 +881,36 @@ const styles = StyleSheet.create({
   },
   vsItemLoaded: {
     fontSize: 13,
-    color: '#64748B',
+    color: '#94A3B8',
     fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  vsItemSold: {
+    fontSize: 13,
+    color: '#10B981',
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
   },
   vsItemRemaining: {
     fontSize: 13,
     fontWeight: '700',
     color: '#F59E0B',
+    flex: 1,
+    textAlign: 'center',
+  },
+  vsFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  vsFooterText: {
+    fontSize: 11,
+    color: '#64748B',
   },
   noStockBanner: {
     flexDirection: 'row',

@@ -23,7 +23,9 @@ interface StockItem {
   id: string;
   product_id: string;
   product_name: string;
-  quantity: number;
+  current_quantity: number;
+  category?: string;
+  unit_type?: string;
 }
 
 interface VehicleStockItem {
@@ -102,12 +104,18 @@ export default function VehicleDispatchScreen() {
       Alert.alert('Select Route', 'Please select a daily route first');
       return;
     }
-    const items: DispatchItem[] = stockLevels.map((s) => ({
-      product_id: s.product_id || s.id,
-      product_name: s.product_name,
-      quantity: 0,
-      available: s.quantity,
-    }));
+    const items: DispatchItem[] = stockLevels
+      .filter((s) => (s.current_quantity || 0) > 0)
+      .map((s) => ({
+        product_id: s.product_id || s.id,
+        product_name: s.product_name,
+        quantity: 0,
+        available: s.current_quantity || 0,
+      }));
+    if (items.length === 0) {
+      Alert.alert('No Stock', 'No warehouse stock available to dispatch. Receive stock from suppliers first.');
+      return;
+    }
     setDispatchItems(items);
     setDispatchModalVisible(true);
   };
@@ -357,15 +365,23 @@ export default function VehicleDispatchScreen() {
               {dispatchItems.map((item, idx) => (
                 <View key={idx} style={styles.dispatchItemRow}>
                   <View style={styles.dispatchItemInfo}>
-                    <Text style={styles.dispatchItemName}>{item.product_name}</Text>
-                    <Text style={styles.dispatchItemAvail}>Available: {item.available}</Text>
+                    <Text style={styles.dispatchItemName} numberOfLines={1}>{item.product_name}</Text>
+                    <Text style={styles.dispatchItemAvail}>
+                      Warehouse: {item.available} available
+                    </Text>
                   </View>
                   <View style={styles.qtyControls}>
                     <TouchableOpacity
-                      style={styles.qtyBtn}
-                      onPress={() => updateDispatchQty(idx, String(Math.max(0, item.quantity - 1)))}
+                      style={[styles.qtyBtn, item.quantity === 0 && styles.qtyBtnDisabled]}
+                      onPress={() => {
+                        if (item.quantity > 0) {
+                          const updated = [...dispatchItems];
+                          updated[idx].quantity = item.quantity - 1;
+                          setDispatchItems(updated);
+                        }
+                      }}
                     >
-                      <Ionicons name="remove" size={18} color="#FFFFFF" />
+                      <Ionicons name="remove" size={18} color={item.quantity === 0 ? '#475569' : '#FFFFFF'} />
                     </TouchableOpacity>
                     <TextInput
                       style={styles.qtyInput}
@@ -374,15 +390,31 @@ export default function VehicleDispatchScreen() {
                       keyboardType="number-pad"
                     />
                     <TouchableOpacity
-                      style={styles.qtyBtn}
-                      onPress={() => updateDispatchQty(idx, String(item.quantity + 1))}
+                      style={[styles.qtyBtn, item.quantity >= item.available && styles.qtyBtnDisabled]}
+                      onPress={() => {
+                        if (item.quantity < item.available) {
+                          const updated = [...dispatchItems];
+                          updated[idx].quantity = item.quantity + 1;
+                          setDispatchItems(updated);
+                        }
+                      }}
                     >
-                      <Ionicons name="add" size={18} color="#FFFFFF" />
+                      <Ionicons name="add" size={18} color={item.quantity >= item.available ? '#475569' : '#FFFFFF'} />
                     </TouchableOpacity>
                   </View>
                 </View>
               ))}
             </ScrollView>
+
+            {/* Dispatch summary */}
+            <View style={styles.dispatchSummaryRow}>
+              <Text style={styles.dispatchSummaryLabel}>
+                Total items to load: 
+              </Text>
+              <Text style={styles.dispatchSummaryValue}>
+                {dispatchItems.reduce((sum, i) => sum + i.quantity, 0)} units ({dispatchItems.filter(i => i.quantity > 0).length} products)
+              </Text>
+            </View>
 
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setDispatchModalVisible(false)}>
@@ -422,20 +454,22 @@ export default function VehicleDispatchScreen() {
               {returnItems.map((item, idx) => (
                 <View key={idx} style={styles.dispatchItemRow}>
                   <View style={styles.dispatchItemInfo}>
-                    <Text style={styles.dispatchItemName}>{item.product_name}</Text>
-                    <Text style={styles.dispatchItemAvail}>Remaining on vehicle: {item.max}</Text>
+                    <Text style={styles.dispatchItemName} numberOfLines={1}>{item.product_name}</Text>
+                    <Text style={styles.dispatchItemAvail}>On vehicle: {item.max} remaining</Text>
                   </View>
                   <View style={styles.qtyControls}>
                     <TouchableOpacity
-                      style={styles.qtyBtn}
+                      style={[styles.qtyBtn, parseInt(item.quantity, 10) === 0 && styles.qtyBtnDisabled]}
                       onPress={() => {
-                        const updated = [...returnItems];
-                        const curr = parseInt(updated[idx].quantity, 10);
-                        updated[idx].quantity = String(Math.max(0, curr - 1));
-                        setReturnItems(updated);
+                        const curr = parseInt(item.quantity, 10);
+                        if (curr > 0) {
+                          const updated = [...returnItems];
+                          updated[idx].quantity = String(curr - 1);
+                          setReturnItems(updated);
+                        }
                       }}
                     >
-                      <Ionicons name="remove" size={18} color="#FFFFFF" />
+                      <Ionicons name="remove" size={18} color={parseInt(item.quantity, 10) === 0 ? '#475569' : '#FFFFFF'} />
                     </TouchableOpacity>
                     <TextInput
                       style={styles.qtyInput}
@@ -449,20 +483,30 @@ export default function VehicleDispatchScreen() {
                       keyboardType="number-pad"
                     />
                     <TouchableOpacity
-                      style={styles.qtyBtn}
+                      style={[styles.qtyBtn, parseInt(item.quantity, 10) >= item.max && styles.qtyBtnDisabled]}
                       onPress={() => {
-                        const updated = [...returnItems];
-                        const curr = parseInt(updated[idx].quantity, 10);
-                        updated[idx].quantity = String(Math.min(curr + 1, item.max));
-                        setReturnItems(updated);
+                        const curr = parseInt(item.quantity, 10);
+                        if (curr < item.max) {
+                          const updated = [...returnItems];
+                          updated[idx].quantity = String(curr + 1);
+                          setReturnItems(updated);
+                        }
                       }}
                     >
-                      <Ionicons name="add" size={18} color="#FFFFFF" />
+                      <Ionicons name="add" size={18} color={parseInt(item.quantity, 10) >= item.max ? '#475569' : '#FFFFFF'} />
                     </TouchableOpacity>
                   </View>
                 </View>
               ))}
             </ScrollView>
+
+            {/* Return summary */}
+            <View style={styles.dispatchSummaryRow}>
+              <Text style={styles.dispatchSummaryLabel}>Total to receive back: </Text>
+              <Text style={styles.dispatchSummaryValue}>
+                {returnItems.reduce((sum, i) => sum + parseInt(i.quantity, 10), 0)} units
+              </Text>
+            </View>
 
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setReturnModalVisible(false)}>
@@ -565,14 +609,25 @@ const styles = StyleSheet.create({
   dispatchItemAvail: { fontSize: 12, color: '#64748B', marginTop: 2 },
   qtyControls: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   qtyBtn: {
-    width: 32, height: 32, borderRadius: 8, backgroundColor: '#334155',
+    width: 36, height: 36, borderRadius: 8, backgroundColor: '#334155',
     justifyContent: 'center', alignItems: 'center',
   },
-  qtyInput: {
-    width: 48, height: 36, backgroundColor: '#0F172A', borderRadius: 8,
-    borderWidth: 1, borderColor: '#334155', textAlign: 'center',
-    color: '#FFFFFF', fontSize: 16, fontWeight: '700',
+  qtyBtnDisabled: {
+    backgroundColor: '#1E293B',
+    opacity: 0.5,
   },
+  qtyInput: {
+    width: 52, height: 40, backgroundColor: '#0F172A', borderRadius: 8,
+    borderWidth: 1, borderColor: '#334155', textAlign: 'center',
+    color: '#FFFFFF', fontSize: 17, fontWeight: '700',
+  },
+  dispatchSummaryRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 10, marginTop: 8,
+    borderTopWidth: 1, borderTopColor: '#334155',
+  },
+  dispatchSummaryLabel: { fontSize: 13, color: '#94A3B8' },
+  dispatchSummaryValue: { fontSize: 14, fontWeight: '700', color: '#3B82F6' },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 16 },
   cancelBtn: {
     flex: 1, paddingVertical: 14, borderRadius: 10, borderWidth: 1,
