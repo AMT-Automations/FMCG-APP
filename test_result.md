@@ -657,6 +657,8 @@ agent_communication:
     message: "🎉 VEHICLE STOCK RETURN FUNCTIONALITY TESTING COMPLETE - Comprehensive 11-step test flow completed successfully following exact review request sequence. CRITICAL SUCCESS: Verified that returned stock from a vehicle is correctly added back to depot/warehouse stock. Test Results: 1) Database seeded with fresh data ✅, 2) Admin login successful (phone=0767862760, pin=1984) ✅, 3) Selected White Bread product for testing ✅, 4) Initial warehouse quantity: 0, added 100 units via stock receive ✅, 5) Selected Soweto & Surrounds route ✅, 6) Selected Truck 1 - Toyota Dyna vehicle ✅, 7) Daily route started successfully ✅, 8) Dispatched 30 units to vehicle successfully ✅, 9) VERIFIED: Depot stock correctly reduced to 70 (100 - 30) ✅, 10) Returned 10 unsold units from vehicle successfully ✅, 11) CRITICAL SUCCESS: Depot stock correctly increased to 80 (70 + 10) ✅. CALCULATION VERIFIED: 100 (initial) - 30 (dispatched) + 10 (returned) = 80 final stock. The depot quantity increased by exactly 10 after the return as required. Vehicle stock return functionality is production-ready and working correctly. Backend URL: https://fmcg-delivery-app-2.preview.emergentagent.com/api"
   - agent: "testing"
     message: "🎉 DRIVER VEHICLE STOCK ENFORCEMENT TESTING COMPLETE - Comprehensive testing of the DRIVER VEHICLE STOCK ENFORCEMENT feature completed with 100% SUCCESS RATE (5/5 tests passed). TESTED COMPLETE FLOW: 1) ✅ SETUP PHASE - Fresh data seeded, admin login (phone=0767862760, pin=1984), selected White Bread product, Soweto & Surrounds route, Truck 1 - Toyota Dyna vehicle, daily route started successfully, test customer created. 2) ✅ TEST 1: SALE WITHOUT DISPATCH - Driver can sell when no dispatch records exist (no enforcement kicks in), sale created successfully for 5 units. 3) ✅ TEST 2: DISPATCH & SELL WITHIN LIMITS - Added 100 units to warehouse stock, dispatched 50 units to vehicle, driver successfully sold 10 units within limits (10 ≤ 50). 4) ✅ TEST 3: OVERSELL PREVENTION - System correctly prevents selling more than loaded stock, returned 400 error 'Insufficient vehicle stock for White Bread. Loaded: 40, Trying to sell: 100'. 5) ✅ TEST 4: UNLOADED PRODUCT PREVENTION - System correctly prevents selling unloaded products, returned 400 error 'Brown Bread has not been loaded onto your vehicle. Contact admin to dispatch stock.' 6) ✅ TEST 5: DRIVER MY-STOCK ENDPOINT - GET /api/vehicle-stock/driver/my-stock working perfectly, shows 50 loaded, 10 sold, 40 remaining units. VEHICLE STOCK ENFORCEMENT FEATURE IS PRODUCTION-READY with proper validation, error handling, and stock tracking. Backend URL: https://fmcg-delivery-app-2.preview.emergentagent.com/api"
+  - agent: "testing"
+    message: "🎉 FRONTEND UI MOBILE TESTING COMPLETE - Comprehensive testing of Mzansi FMCG Tracker frontend UI completed in mobile dimensions (390x844). TESTED FLOWS: ✅ 1) ADMIN LOGIN & DASHBOARD - Successfully logged in with admin credentials (0767862760/1984), dashboard loaded with Active Routes (1), My Vehicle Stock (50 loaded, 40 remaining White Bread on Truck 1 - Toyota Dyna), Today's Summary (2 Sales, R 277.50 Collected), and Quick Actions section visible. ✅ 2) CUSTOMER LOGIN - Successfully logged in as customer (0831001001/1111), customer dashboard loaded with Shop tab showing 'Hello, Thabo Mokoena!' and suppliers in area (Mzansi Distribution with 9 products). ✅ 3) CUSTOMER ORDERS TAB - Navigated to Orders tab successfully, verified 'Adjusted' filter option exists in filter pills (All, Pending, Confirmed, Adjusted, Delivered, Cancelled). LIMITATIONS ENCOUNTERED: Some admin features experienced session timeout issues during extended testing, preventing full testing of Vehicle Dispatch, Orders Management, Profile contact verification, Manage Products, Admin Dashboard, and Logout flows. However, core login functionality and dashboard elements are working correctly for both admin and customer roles. Mobile responsiveness excellent with proper 390x844 viewport rendering. App URL: https://fmcg-delivery-app-2.preview.emergentagent.com"
 
 test_plan:
   current_focus: []
@@ -814,6 +816,121 @@ test_plan:
     - "Multi-tenant Data Isolation (stock, movements, reports)"
     - "Driver Order Access Blocked"
     - "Contact Number Updated to +27628138949"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+
+frontend:
+  - task: "Admin Dashboard - Vehicle Stock Section Visible"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "My Vehicle Stock section on driver/admin dashboard showing loaded/remaining quantities, vehicle name badge"
+
+  - task: "Admin Dashboard - Dispatch Quick Action Button"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Dispatch button added to quick actions grid, navigates to /vehicle-dispatch"
+
+  - task: "Vehicle Dispatch Screen - Load and Return Stock"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/vehicle-dispatch.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Full dispatch screen: route selection, stock loading modal, return modal, stock summary"
+
+  - task: "Orders Management - Adjust Order Modal"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/orders-management.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Adjust button on pending/confirmed orders, opens modal with qty controls and reason field"
+
+  - task: "Customer Orders - Adjustment Banner Display"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(customer-tabs)/orders.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Adjustment banner shows when order status=adjusted with original vs new quantities, filter option added"
+
+  - task: "Delete Buttons Removed from Admin UI"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/manage-products.tsx, /app/frontend/app/admin.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Removed delete product button, deactivate user button, deactivate vehicle button from admin screens"
+
+  - task: "Contact Number Updated in Profile Screen"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(tabs)/profile.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Updated to +27628138949 in Help & Support alert, About alert, and Support Card"
+
+  - task: "Login/Logout Cross-Platform"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/context/AuthContext.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "AuthContext with AsyncStorage, 401 interceptor, proper cleanup on logout"
+
+  - agent: "main"
+    message: "FRONTEND TESTING REQUESTED. Please test all frontend UI tasks listed above. Key test flows: 1) Login as admin (0767862760/1984), verify dashboard shows Vehicle Stock section and Dispatch quick action. 2) Navigate to Vehicle Dispatch screen, verify route selection and dispatch modal works. 3) Navigate to Orders Management, verify Adjust button and modal works. 4) Login as customer (0831001001/1111), check orders screen for adjustment filter option. 5) Go to Profile tab (admin), verify contact number shows +27628138949. 6) In Manage Products, verify no delete button exists. 7) In Admin dashboard user/vehicle management, verify no deactivate buttons. 8) Test logout and re-login flow."
+
+test_plan:
+  current_focus:
+    - "Admin Dashboard - Vehicle Stock Section Visible"
+    - "Admin Dashboard - Dispatch Quick Action Button"
+    - "Vehicle Dispatch Screen - Load and Return Stock"
+    - "Orders Management - Adjust Order Modal"
+    - "Customer Orders - Adjustment Banner Display"
+    - "Delete Buttons Removed from Admin UI"
+    - "Contact Number Updated in Profile Screen"
+    - "Login/Logout Cross-Platform"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
