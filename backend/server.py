@@ -438,11 +438,21 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 def get_company_filter(user: dict) -> dict:
     """Get a MongoDB filter to scope data by the user's company_id.
-    Returns empty dict if user has no company (backward compatible with legacy data)."""
+    Returns a filter that matches nothing if user has no company_id (prevents data leakage)."""
     company_id = user.get("company_id")
     if company_id:
         return {"company_id": company_id}
-    return {}
+    # Prevent data leakage: no company_id means match nothing
+    return {"company_id": {"$exists": True, "$eq": "__no_company__"}}
+
+def verify_company_ownership(resource: dict, current_user: dict):
+    """Verify the resource belongs to the same company as the user. Raises 403 if not."""
+    user_company = current_user.get("company_id")
+    resource_company = resource.get("company_id")
+    if not user_company:
+        raise HTTPException(status_code=403, detail="No company assigned to your account")
+    if resource_company and resource_company != user_company:
+        raise HTTPException(status_code=403, detail="Access denied: resource belongs to another company")
 
 # ==================== AUTH ENDPOINTS ====================
 
@@ -680,6 +690,7 @@ async def update_product(product_id: str, product: ProductUpdate, current_user: 
     existing = await db.products.find_one({"_id": ObjectId(product_id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Product not found")
+    verify_company_ownership(existing, current_user)
     
     update_data = {k: v for k, v in product.dict().items() if v is not None}
     if update_data:
@@ -696,6 +707,7 @@ async def delete_product(product_id: str, current_user: dict = Depends(get_curre
     existing = await db.products.find_one({"_id": ObjectId(product_id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Product not found")
+    verify_company_ownership(existing, current_user)
     
     await db.products.delete_one({"_id": ObjectId(product_id)})
     return {"message": "Product deleted successfully"}
@@ -782,6 +794,7 @@ async def update_vehicle(vehicle_id: str, update: VehicleUpdate, current_user: d
     vehicle = await db.vehicles.find_one({"_id": ObjectId(vehicle_id)})
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
+    verify_company_ownership(vehicle, current_user)
     
     update_data = {k: v for k, v in update.dict().items() if v is not None}
     if update_data:
@@ -798,6 +811,7 @@ async def deactivate_vehicle(vehicle_id: str, current_user: dict = Depends(get_c
     vehicle = await db.vehicles.find_one({"_id": ObjectId(vehicle_id)})
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
+    verify_company_ownership(vehicle, current_user)
     
     await db.vehicles.update_one({"_id": ObjectId(vehicle_id)}, {"$set": {"is_active": False}})
     return {"message": "Vehicle deactivated successfully"}
@@ -824,7 +838,18 @@ async def seed_vehicles():
 
 @api_router.get("/customers", response_model=List[CustomerResponse])
 async def get_customers(route_id: Optional[str] = None, include_inactive: bool = False, current_user: dict = Depends(get_current_user)):
-    query = get_company_filter(current_user)
+    company_id = current_user.get("company_id", "")
+    
+    if is_customer(current_user):
+        # Customers can only see themselves
+        query = {"_id": ObjectId(current_user["id"])}
+    else:
+        # Show company's own customers PLUS marketplace customers (empty company_id)
+        query = {"$or": [
+            {"company_id": company_id},
+            {"company_id": {"$in": ["", None]}},
+        ]}
+    
     if route_id:
         query["route_id"] = route_id
     if not include_inactive:
@@ -858,6 +883,7 @@ async def update_customer(customer_id: str, update: CustomerUpdate, current_user
     customer = await db.customers.find_one({"_id": ObjectId(customer_id)})
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
+    verify_company_ownership(customer, current_user)
     
     update_data = {k: v for k, v in update.dict().items() if v is not None}
     
@@ -884,6 +910,7 @@ async def deactivate_customer(customer_id: str, current_user: dict = Depends(get
     customer = await db.customers.find_one({"_id": ObjectId(customer_id)})
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
+    verify_company_ownership(customer, current_user)
     
     await db.customers.update_one({"_id": ObjectId(customer_id)}, {"$set": {"is_active": False}})
     return {"message": "Customer deactivated successfully"}
@@ -981,6 +1008,7 @@ async def update_route(route_id: str, update: RouteUpdate, current_user: dict = 
     route = await db.routes.find_one({"_id": ObjectId(route_id)})
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
+    verify_company_ownership(route, current_user)
     
     update_data = {k: v for k, v in update.dict().items() if v is not None}
     
@@ -1006,6 +1034,7 @@ async def delete_route(route_id: str, current_user: dict = Depends(get_current_u
     route = await db.routes.find_one({"_id": ObjectId(route_id)})
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
+    verify_company_ownership(route, current_user)
     
     # Check if route has customers
     customer_count = await db.customers.count_documents({"route_id": route_id})

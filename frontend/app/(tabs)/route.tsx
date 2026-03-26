@@ -292,6 +292,15 @@ export default function RouteScreen() {
         }
       />
 
+      {/* Floating Add Customer Button - always visible */}
+      <TouchableOpacity
+        style={styles.floatingAddBtn}
+        onPress={() => setAddCustomerVisible(true)}
+      >
+        <Ionicons name="person-add" size={22} color="#FFFFFF" />
+        <Text style={styles.floatingAddBtnText}>Add Customer</Text>
+      </TouchableOpacity>
+
       {/* Add Customer Modal */}
       <Modal
         visible={addCustomerVisible}
@@ -614,5 +623,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  floatingAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#3B82F6',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  floatingAddBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
