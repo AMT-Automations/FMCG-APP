@@ -23,6 +23,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [vehicleStock, setVehicleStock] = useState<any>(null);
+  const [showAllStock, setShowAllStock] = useState(false);
 
   const loadData = async () => {
     try {
@@ -256,39 +257,50 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Vehicle Stock Section - Shows stock loaded on driver's vehicle */}
+        {/* Vehicle Stock Section - Compact: summary + preview + expand */}
         {vehicleStock && vehicleStock.items && vehicleStock.items.length > 0 && (
           <View style={styles.vehicleStockSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>My Vehicle Stock</Text>
-              <View style={styles.vehicleStockBadge}>
-                <Ionicons name="cube" size={14} color="#10B981" />
-                <Text style={styles.vehicleStockBadgeText}>
-                  {vehicleStock.vehicle_name || 'Vehicle'}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.vehicleStockSummary}>
-              <View style={styles.vsSummaryItem}>
-                <Text style={styles.vsSummaryValue}>{vehicleStock.total_loaded}</Text>
-                <Text style={styles.vsSummaryLabel}>Loaded</Text>
-              </View>
-              <View style={styles.vsSummaryItem}>
-                <Text style={[styles.vsSummaryValue, { color: '#F59E0B' }]}>
-                  {vehicleStock.total_remaining}
-                </Text>
-                <Text style={styles.vsSummaryLabel}>Remaining</Text>
-              </View>
-            </View>
-            {vehicleStock.items.map((item: any, idx: number) => (
-              <View key={idx} style={styles.vsItemCard}>
-                <Text style={styles.vsItemName}>{item.product_name}</Text>
-                <View style={styles.vsItemStats}>
-                  <Text style={styles.vsItemLoaded}>Loaded: {item.quantity_loaded}</Text>
-                  <Text style={styles.vsItemRemaining}>Left: {item.quantity_remaining}</Text>
+            <TouchableOpacity
+              style={styles.vsHeaderRow}
+              onPress={() => setShowAllStock(!showAllStock)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <Ionicons name="cube" size={18} color="#10B981" />
+                <Text style={styles.sectionTitle}>My Vehicle Stock</Text>
+                <View style={styles.vehicleStockBadge}>
+                  <Text style={styles.vehicleStockBadgeText}>
+                    {vehicleStock.vehicle_name || 'Vehicle'}
+                  </Text>
                 </View>
               </View>
-            ))}
+              <View style={styles.vsCompactStats}>
+                <Text style={styles.vsCompactLoaded}>{vehicleStock.total_loaded} loaded</Text>
+                <Text style={styles.vsCompactSep}>•</Text>
+                <Text style={styles.vsCompactRemaining}>{vehicleStock.total_remaining} left</Text>
+                <Ionicons
+                  name={showAllStock ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color="#64748B"
+                  style={{ marginLeft: 4 }}
+                />
+              </View>
+            </TouchableOpacity>
+
+            {showAllStock && (
+              <View style={styles.vsExpandedList}>
+                {vehicleStock.items.map((item: any, idx: number) => (
+                  <View key={idx} style={styles.vsItemCard}>
+                    <Text style={styles.vsItemName} numberOfLines={1}>{item.product_name}</Text>
+                    <View style={styles.vsItemStats}>
+                      <Text style={styles.vsItemLoaded}>{item.quantity_loaded}</Text>
+                      <Ionicons name="arrow-forward" size={12} color="#475569" />
+                      <Text style={styles.vsItemRemaining}>{item.quantity_remaining}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         )}
         {vehicleStock && (!vehicleStock.items || vehicleStock.items.length === 0) && activeRoutes.length > 0 && (
@@ -766,72 +778,83 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
-  // Vehicle Stock styles
+  // Vehicle Stock styles - compact collapsible
   vehicleStockSection: {
     marginHorizontal: 16,
     marginBottom: 16,
+    backgroundColor: '#1E293B',
+    borderRadius: 14,
+    overflow: 'hidden',
   },
-  vehicleStockBadge: {
+  vsHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'space-between',
+    padding: 14,
+  },
+  vehicleStockBadge: {
     backgroundColor: '#064E3B',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   vehicleStockBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: '#10B981',
   },
-  vehicleStockSummary: {
+  vsCompactStats: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 8,
-  },
-  vsSummaryItem: {
-    flex: 1,
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 14,
     alignItems: 'center',
+    gap: 4,
   },
-  vsSummaryValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  vsSummaryLabel: {
-    fontSize: 11,
+  vsCompactLoaded: {
+    fontSize: 12,
     color: '#94A3B8',
-    marginTop: 2,
+    fontWeight: '600',
+  },
+  vsCompactSep: {
+    fontSize: 12,
+    color: '#475569',
+  },
+  vsCompactRemaining: {
+    fontSize: 12,
+    color: '#F59E0B',
+    fontWeight: '700',
+  },
+  vsExpandedList: {
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
   },
   vsItemCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#0F172A',
   },
   vsItemName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#CBD5E1',
     flex: 1,
+    marginRight: 8,
   },
   vsItemStats: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    gap: 6,
   },
   vsItemLoaded: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#64748B',
+    fontWeight: '600',
   },
   vsItemRemaining: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#F59E0B',
   },
