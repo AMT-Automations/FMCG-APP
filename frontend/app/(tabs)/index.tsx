@@ -265,7 +265,7 @@ export default function HomeScreen() {
               <View style={styles.vsGrandHeader}>
                 <Ionicons name="cube" size={16} color="#10B981" />
                 <Text style={styles.vsGrandTitle}>
-                  Vehicle Stock ({vehicleStock.total_vehicles} {vehicleStock.total_vehicles === 1 ? 'vehicle' : 'vehicles'})
+                  Vehicle Stock ({vehicleStock.total_vehicles})
                 </Text>
                 <Text style={styles.vsGrandStats}>
                   {vehicleStock.grand_total_loaded} loaded • {vehicleStock.grand_total_remaining} left
