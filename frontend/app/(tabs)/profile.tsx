@@ -202,7 +202,7 @@ export default function ProfileScreen() {
                 'Help & Support',
                 `Need assistance? Contact us:\n\n` +
                 `📧 Email: supportapp@mzafri.co.za\n` +
-                `📞 Phone: +27 71 876 5600\n` +
+                `📞 Phone: +27628138949\n` +
                 `🌐 Website: www.mzafri.co.za\n\n` +
                 `Our support team is available Monday to Friday, 8am - 5pm.`,
                 [{ text: 'OK' }]
@@ -227,7 +227,7 @@ export default function ProfileScreen() {
                 `Version 1.0.0\n\n` +
                 `Developed for Mzafri Distribution\n\n` +
                 `📧 supportapp@mzafri.co.za\n` +
-                `📞 +27 71 876 5600\n` +
+                `📞 +27628138949\n` +
                 `🌐 www.mzafri.co.za\n\n` +
                 `© 2026 Mzafri Distribution. All rights reserved.`,
                 [{ text: 'OK' }]
@@ -254,7 +254,7 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.supportRow}>
             <Ionicons name="call" size={16} color="#10B981" />
-            <Text style={styles.supportText}>+27 71 876 5600</Text>
+            <Text style={styles.supportText}>+27628138949</Text>
           </View>
           <View style={styles.supportRow}>
             <Ionicons name="globe" size={16} color="#F59E0B" />
