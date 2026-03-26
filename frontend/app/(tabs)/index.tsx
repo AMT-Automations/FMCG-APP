@@ -331,6 +331,17 @@ export default function HomeScreen() {
                 <Text style={styles.actionText}>Orders</Text>
               </TouchableOpacity>
             )}
+            {(user?.role === 'admin' || user?.role === 'manager') && (
+              <TouchableOpacity
+                style={styles.actionCard}
+                onPress={() => router.push('/vehicle-dispatch')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: '#1E3B2E' }]}>
+                  <Ionicons name="bus" size={24} color="#22C55E" />
+                </View>
+                <Text style={styles.actionText}>Dispatch</Text>
+              </TouchableOpacity>
+            )}
             {user?.role === 'admin' && (
               <TouchableOpacity
                 style={styles.actionCard}

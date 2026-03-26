@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 
 # Backend URL - using the specific URL from review request
-BASE_URL = "https://expo-production-2.preview.emergentagent.com/api"
+BASE_URL = "https://fmcg-delivery-app-2.preview.emergentagent.com/api"
 
 class CustomerOrderingTester:
     def __init__(self):

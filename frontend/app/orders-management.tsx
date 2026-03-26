@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, RefreshControl, Alert, Platform,
+  Modal, TextInput, KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,12 +10,22 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/services/api';
 
+interface OrderItem {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+}
+
 interface Order {
   id: string;
   order_number: string;
   status: string;
   total_amount: number;
-  items: { product_name: string; quantity: number; unit_price: number }[];
+  items: OrderItem[];
+  original_items?: OrderItem[];
+  adjusted_items?: OrderItem[];
+  adjustment_reason?: string;
   customer_name: string;
   customer_phone: string;
   route_name: string;
@@ -55,6 +66,13 @@ export default function OrdersManagementScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  
+  // Adjust order state
+  const [adjustModalVisible, setAdjustModalVisible] = useState(false);
+  const [adjustingOrder, setAdjustingOrder] = useState<Order | null>(null);
+  const [adjustedQuantities, setAdjustedQuantities] = useState<Record<string, string>>({});
+  const [adjustReason, setAdjustReason] = useState('');
+  const [adjustSaving, setAdjustSaving] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -90,6 +108,48 @@ export default function OrdersManagementScreen() {
       Alert.alert('Error', error.response?.data?.detail || 'Failed to update order status');
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const openAdjustModal = (order: Order) => {
+    setAdjustingOrder(order);
+    const quantities: Record<string, string> = {};
+    order.items.forEach((item) => {
+      quantities[item.product_id || item.product_name] = String(item.quantity);
+    });
+    setAdjustedQuantities(quantities);
+    setAdjustReason('');
+    setAdjustModalVisible(true);
+  };
+
+  const handleAdjustOrder = async () => {
+    if (!adjustingOrder) return;
+    setAdjustSaving(true);
+    try {
+      const adjustedItems = adjustingOrder.items.map((item) => {
+        const key = item.product_id || item.product_name;
+        const newQty = parseInt(adjustedQuantities[key] || '0', 10);
+        return {
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: Math.max(0, newQty),
+          unit_price: item.unit_price,
+        };
+      });
+
+      await api.adjustOrder(adjustingOrder.id, {
+        items: adjustedItems,
+        reason: adjustReason || 'Stock adjustment by admin',
+      });
+
+      Alert.alert('Success', 'Order adjusted successfully. Customer will see the updated quantities.');
+      setAdjustModalVisible(false);
+      setAdjustingOrder(null);
+      loadData();
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to adjust order');
+    } finally {
+      setAdjustSaving(false);
     }
   };
 
@@ -241,6 +301,14 @@ export default function OrdersManagementScreen() {
                 <View style={styles.orderCardFooter}>
                   <Text style={styles.orderTotal}>R{order.total_amount.toFixed(2)}</Text>
                   <View style={styles.actionButtons}>
+                    {(order.status === 'pending' || order.status === 'confirmed') && (
+                      <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: '#F59E0B' }]}
+                        onPress={() => openAdjustModal(order)}
+                      >
+                        <Text style={styles.actionBtnText}>Adjust</Text>
+                      </TouchableOpacity>
+                    )}
                     {nextAction && (
                       <TouchableOpacity
                         style={[styles.actionBtn, isUpdating && { opacity: 0.5 }]}
@@ -256,11 +324,136 @@ export default function OrdersManagementScreen() {
                     )}
                   </View>
                 </View>
+
+                {/* Show if adjusted */}
+                {order.status === 'adjusted' && order.adjustment_reason && (
+                  <View style={styles.adjustedBanner}>
+                    <Ionicons name="information-circle" size={14} color="#1E40AF" />
+                    <Text style={styles.adjustedText}>Adjusted: {order.adjustment_reason}</Text>
+                  </View>
+                )}
               </View>
             );
           })
         )}
       </ScrollView>
+
+      {/* Adjust Order Modal */}
+      <Modal
+        visible={adjustModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setAdjustModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                Adjust Order #{adjustingOrder?.order_number}
+              </Text>
+              <TouchableOpacity onPress={() => setAdjustModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Customer: {adjustingOrder?.customer_name}
+            </Text>
+            <Text style={styles.modalHint}>
+              Reduce quantities for out-of-stock items. Set to 0 to remove an item.
+            </Text>
+
+            <ScrollView style={styles.adjustItemsList}>
+              {adjustingOrder?.items.map((item, idx) => {
+                const key = item.product_id || item.product_name;
+                return (
+                  <View key={idx} style={styles.adjustItemRow}>
+                    <View style={styles.adjustItemInfo}>
+                      <Text style={styles.adjustItemName}>{item.product_name}</Text>
+                      <Text style={styles.adjustItemOriginal}>
+                        Original: {item.quantity} × R{item.unit_price.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={styles.adjustQtyBox}>
+                      <TouchableOpacity
+                        style={styles.qtyBtn}
+                        onPress={() => {
+                          const current = parseInt(adjustedQuantities[key] || '0', 10);
+                          if (current > 0) {
+                            setAdjustedQuantities({
+                              ...adjustedQuantities,
+                              [key]: String(current - 1),
+                            });
+                          }
+                        }}
+                      >
+                        <Ionicons name="remove" size={18} color="#FFFFFF" />
+                      </TouchableOpacity>
+                      <TextInput
+                        style={styles.qtyInput}
+                        value={adjustedQuantities[key] || '0'}
+                        onChangeText={(v) =>
+                          setAdjustedQuantities({
+                            ...adjustedQuantities,
+                            [key]: v.replace(/[^0-9]/g, ''),
+                          })
+                        }
+                        keyboardType="number-pad"
+                      />
+                      <TouchableOpacity
+                        style={styles.qtyBtn}
+                        onPress={() => {
+                          const current = parseInt(adjustedQuantities[key] || '0', 10);
+                          if (current < item.quantity) {
+                            setAdjustedQuantities({
+                              ...adjustedQuantities,
+                              [key]: String(current + 1),
+                            });
+                          }
+                        }}
+                      >
+                        <Ionicons name="add" size={18} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <TextInput
+              style={styles.reasonInput}
+              placeholder="Reason for adjustment (e.g. out of stock)"
+              placeholderTextColor="#64748B"
+              value={adjustReason}
+              onChangeText={setAdjustReason}
+              multiline
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setAdjustModalVisible(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveAdjustBtn, adjustSaving && { opacity: 0.5 }]}
+                onPress={handleAdjustOrder}
+                disabled={adjustSaving}
+              >
+                {adjustSaving ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.saveAdjustBtnText}>Save Adjustment</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -321,4 +514,61 @@ const styles = StyleSheet.create({
     backgroundColor: '#3B82F6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8,
   },
   actionBtnText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
+  adjustedBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#1E3A5F', padding: 8, borderRadius: 8, marginTop: 8,
+  },
+  adjustedText: { fontSize: 12, color: '#93C5FD', flex: 1 },
+  // Modal styles
+  modalOverlay: {
+    flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  modalContent: {
+    backgroundColor: '#1E293B', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 20, maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
+  modalSubtitle: { fontSize: 14, color: '#94A3B8', marginBottom: 4 },
+  modalHint: { fontSize: 12, color: '#F59E0B', marginBottom: 16 },
+  adjustItemsList: { maxHeight: 300 },
+  adjustItemRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: '#0F172A', borderRadius: 10, padding: 12, marginBottom: 8,
+  },
+  adjustItemInfo: { flex: 1, marginRight: 12 },
+  adjustItemName: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
+  adjustItemOriginal: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  adjustQtyBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+  },
+  qtyBtn: {
+    width: 32, height: 32, borderRadius: 8, backgroundColor: '#334155',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  qtyInput: {
+    width: 48, height: 36, backgroundColor: '#0F172A', borderRadius: 8,
+    borderWidth: 1, borderColor: '#334155', textAlign: 'center',
+    color: '#FFFFFF', fontSize: 16, fontWeight: '700',
+  },
+  reasonInput: {
+    backgroundColor: '#0F172A', borderRadius: 10, padding: 12, marginTop: 12,
+    color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#334155',
+    minHeight: 60, textAlignVertical: 'top',
+  },
+  modalActions: {
+    flexDirection: 'row', gap: 12, marginTop: 16,
+  },
+  cancelBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 10, borderWidth: 1,
+    borderColor: '#334155', alignItems: 'center',
+  },
+  cancelBtnText: { fontSize: 15, fontWeight: '600', color: '#94A3B8' },
+  saveAdjustBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 10, backgroundColor: '#F59E0B',
+    alignItems: 'center',
+  },
+  saveAdjustBtnText: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
 });

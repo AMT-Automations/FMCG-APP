@@ -8,7 +8,7 @@ import json
 import time
 
 # Configuration
-BASE_URL = "https://expo-production-2.preview.emergentagent.com/api"
+BASE_URL = "https://fmcg-delivery-app-2.preview.emergentagent.com/api"
 HEADERS = {"Content-Type": "application/json"}
 
 def check_user_profile(token, description):

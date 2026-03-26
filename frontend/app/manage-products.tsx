@@ -119,25 +119,11 @@ export default function ManageProductsScreen() {
   };
 
   const handleDeleteProduct = (product: Product) => {
+    // Deletion removed - only backend admin can delete
     Alert.alert(
-      'Delete Product',
-      `Are you sure you want to delete "${product.name}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.deleteProduct(product.id);
-              setProducts(products.filter(p => p.id !== product.id));
-              Alert.alert('Success', 'Product deleted successfully');
-            } catch (error: any) {
-              Alert.alert('Error', error.response?.data?.detail || 'Failed to delete product');
-            }
-          },
-        },
-      ]
+      'Not Allowed',
+      'Products can only be removed from the backend. You can edit the product details instead.',
+      [{ text: 'OK' }]
     );
   };
 
@@ -203,7 +189,7 @@ export default function ManageProductsScreen() {
         <Text style={styles.countText}>
           {filteredProducts.length} products available
         </Text>
-        <Text style={styles.hintText}>Tap to edit • Long press to delete</Text>
+        <Text style={styles.hintText}>Tap to edit</Text>
       </View>
 
       {/* Products List */}
@@ -383,19 +369,7 @@ export default function ManageProductsScreen() {
                 </View>
               )}
 
-              {/* Delete Button for Edit Mode */}
-              {editingProduct && (
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => {
-                    setModalVisible(false);
-                    handleDeleteProduct(editingProduct);
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                  <Text style={styles.deleteButtonText}>Delete Product</Text>
-                </TouchableOpacity>
-              )}
+              {/* Delete functionality removed - backend only */}
             </ScrollView>
 
             {/* Save Button */}

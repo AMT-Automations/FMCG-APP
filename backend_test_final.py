@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import time
 
 # Backend URL from environment
-BASE_URL = "https://expo-production-2.preview.emergentagent.com/api"
+BASE_URL = "https://fmcg-delivery-app-2.preview.emergentagent.com/api"
 
 # Test credentials
 ADMIN_CREDS = {"phone": "0800000001", "pin": "0000"}

@@ -1120,14 +1120,26 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
                 {"$inc": {"balance": balance_change}}
             )
     
-    # Deduct stock for each item sold
+    # Deduct stock for each item sold (company-scoped)
+    company_id = current_user.get("company_id", "")
     for item in sale.items:
         net_sold = item.quantity_delivered - item.quantity_returned
         if net_sold > 0:
-            # Reduce stock
+            # Reduce stock (company-scoped)
             await db.stock.update_one(
-                {"product_id": item.product_id},
+                {"product_id": item.product_id, "company_id": company_id},
                 {"$inc": {"quantity": -net_sold}}
+            )
+            # Also deduct from vehicle stock if dispatch exists
+            today_str = datetime.utcnow().strftime("%Y-%m-%d")
+            await db.vehicle_stock.update_one(
+                {
+                    "driver_id": current_user["id"],
+                    "product_id": item.product_id,
+                    "date": today_str,
+                    "status": "active"
+                },
+                {"$inc": {"quantity_sold": net_sold, "quantity_remaining": -net_sold}}
             )
             # Log the movement
             await db.stock_movements.insert_one({
@@ -1140,6 +1152,7 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
                 "customer_name": sale.customer_name,
                 "driver_id": current_user["id"],
                 "driver_name": current_user["name"],
+                "company_id": company_id,
                 "created_at": datetime.utcnow()
             })
     
@@ -1426,7 +1439,7 @@ async def get_daily_route_history(
     driver_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    query = {}
+    query = get_company_filter(current_user)
     
     # Drivers can only see their own history, admin/manager can see all or filter
     if current_user["role"] == "driver":
@@ -1476,16 +1489,19 @@ async def get_daily_summary(date_str: Optional[str] = None, current_user: dict =
         date_str = datetime.utcnow().strftime("%Y-%m-%d")
     
     query = {"date": date_str}
+    cf = get_company_filter(current_user)
+    query.update(cf)
     if current_user["role"] == "driver":
         query["driver_id"] = current_user["id"]
     
     daily_routes = await db.daily_routes.find(query).to_list(100)
     
-    # Get sales for the day
+    # Get sales for the day (company-scoped)
     start = datetime.strptime(date_str, "%Y-%m-%d")
     end = start.replace(hour=23, minute=59, second=59)
     
     sales_query = {"created_at": {"$gte": start, "$lte": end}, "is_voided": {"$ne": True}}
+    sales_query.update(cf)
     if current_user["role"] == "driver":
         sales_query["driver_id"] = current_user["id"]
     
@@ -2397,13 +2413,15 @@ async def update_customer_prices(
 
 @api_router.get("/stock/levels")
 async def get_stock_levels(current_user: dict = Depends(get_current_user)):
-    """Get current stock levels for all products"""
-    products = await db.products.find().to_list(500)
+    """Get current stock levels for all products (company-scoped)"""
+    cf = get_company_filter(current_user)
+    products = await db.products.find(cf).to_list(500)
     stock_levels = []
     
     for product in products:
         product_id = str(product["_id"])
-        stock_item = await db.stock.find_one({"product_id": product_id})
+        company_id = product.get("company_id", "")
+        stock_item = await db.stock.find_one({"product_id": product_id, "company_id": company_id})
         
         stock_levels.append({
             "product_id": product_id,
@@ -2422,16 +2440,18 @@ async def receive_stock(data: StockReceiveCreate, current_user: dict = Depends(g
     if not is_admin_or_manager(current_user):
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
     
+    company_id = current_user.get("company_id", "")
+    
     # Calculate net quantity after deducting damages/rejects/spoilt
     total_deductions = data.damages_in_transit + data.rejected_stock + data.spoilt_from_factory
     net_quantity = data.quantity - total_deductions
     
-    # Update or create stock record with net quantity
+    # Update or create stock record with net quantity (company-scoped)
     await db.stock.update_one(
-        {"product_id": data.product_id},
+        {"product_id": data.product_id, "company_id": company_id},
         {
             "$inc": {"quantity": net_quantity},
-            "$set": {"product_name": data.product_name, "updated_at": datetime.utcnow()}
+            "$set": {"product_name": data.product_name, "company_id": company_id, "updated_at": datetime.utcnow()}
         },
         upsert=True
     )
@@ -2451,6 +2471,7 @@ async def receive_stock(data: StockReceiveCreate, current_user: dict = Depends(g
         "supplier": data.supplier,
         "batch_reference": data.batch_reference,
         "notes": data.notes,
+        "company_id": company_id,
         "personnel_id": current_user["id"],
         "personnel_name": current_user["name"],
         "created_at": datetime.utcnow()
@@ -2466,6 +2487,7 @@ async def receive_stock(data: StockReceiveCreate, current_user: dict = Depends(g
             "quantity": -data.damages_in_transit,
             "supplier": data.supplier,
             "batch_reference": data.batch_reference,
+            "company_id": company_id,
             "personnel_id": current_user["id"],
             "personnel_name": current_user["name"],
             "created_at": datetime.utcnow()
@@ -2479,6 +2501,7 @@ async def receive_stock(data: StockReceiveCreate, current_user: dict = Depends(g
             "quantity": -data.rejected_stock,
             "supplier": data.supplier,
             "batch_reference": data.batch_reference,
+            "company_id": company_id,
             "personnel_id": current_user["id"],
             "personnel_name": current_user["name"],
             "created_at": datetime.utcnow()
@@ -2492,6 +2515,7 @@ async def receive_stock(data: StockReceiveCreate, current_user: dict = Depends(g
             "quantity": -data.spoilt_from_factory,
             "supplier": data.supplier,
             "batch_reference": data.batch_reference,
+            "company_id": company_id,
             "personnel_id": current_user["id"],
             "personnel_name": current_user["name"],
             "created_at": datetime.utcnow()
@@ -2534,8 +2558,10 @@ async def adjust_stock(data: StockAdjustmentCreate, current_user: dict = Depends
     if not is_admin_or_manager(current_user):
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
     
-    # Get current stock
-    stock = await db.stock.find_one({"product_id": data.product_id})
+    company_id = current_user.get("company_id", "")
+    
+    # Get current stock (company-scoped)
+    stock = await db.stock.find_one({"product_id": data.product_id, "company_id": company_id})
     current_qty = stock.get("quantity", 0) if stock else 0
     
     # Calculate new quantity
@@ -2543,11 +2569,11 @@ async def adjust_stock(data: StockAdjustmentCreate, current_user: dict = Depends
     if new_qty < 0:
         raise HTTPException(status_code=400, detail=f"Cannot adjust below zero. Current: {current_qty}, Adjustment: {data.adjustment_quantity}")
     
-    # Update stock
+    # Update stock (company-scoped)
     await db.stock.update_one(
-        {"product_id": data.product_id},
+        {"product_id": data.product_id, "company_id": company_id},
         {
-            "$set": {"quantity": new_qty, "product_name": data.product_name, "updated_at": datetime.utcnow()}
+            "$set": {"quantity": new_qty, "product_name": data.product_name, "company_id": company_id, "updated_at": datetime.utcnow()}
         },
         upsert=True
     )
@@ -2562,6 +2588,7 @@ async def adjust_stock(data: StockAdjustmentCreate, current_user: dict = Depends
         "notes": data.notes,
         "previous_quantity": current_qty,
         "new_quantity": new_qty,
+        "company_id": company_id,
         "personnel_id": current_user["id"],
         "personnel_name": current_user["name"],
         "created_at": datetime.utcnow()
@@ -2584,15 +2611,17 @@ async def record_stock_take(data: StockTakeCreate, current_user: dict = Depends(
     if not is_admin_or_manager(current_user):
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
     
+    company_id = current_user.get("company_id", "")
     variance = data.physical_count - data.system_quantity
     
-    # Update stock to physical count
+    # Update stock to physical count (company-scoped)
     await db.stock.update_one(
-        {"product_id": data.product_id},
+        {"product_id": data.product_id, "company_id": company_id},
         {
             "$set": {
                 "quantity": data.physical_count,
                 "product_name": data.product_name,
+                "company_id": company_id,
                 "updated_at": datetime.utcnow(),
                 "last_stock_take": datetime.utcnow()
             }
@@ -2609,6 +2638,7 @@ async def record_stock_take(data: StockTakeCreate, current_user: dict = Depends(
         "physical_count": data.physical_count,
         "variance": variance,
         "variance_reason": data.variance_reason,
+        "company_id": company_id,
         "personnel_id": current_user["id"],
         "personnel_name": current_user["name"],
         "created_at": datetime.utcnow()
@@ -2632,12 +2662,16 @@ async def get_stock_movements(
     days: int = 30,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get stock movement history"""
+    """Get stock movement history (company-scoped)"""
     if not is_admin_or_manager(current_user):
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
     
     start_date = datetime.utcnow() - timedelta(days=days)
     query = {"created_at": {"$gte": start_date}}
+    
+    # Company isolation
+    cf = get_company_filter(current_user)
+    query.update(cf)
     
     if product_id:
         query["product_id"] = product_id
@@ -2649,11 +2683,13 @@ async def get_stock_movements(
 
 @api_router.get("/stock/report")
 async def get_stock_report(current_user: dict = Depends(get_current_user)):
-    """Generate stock report with opening, received, sold, adjustments, closing, and variances"""
+    """Generate stock report with opening, received, sold, adjustments, closing, and variances (company-scoped)"""
     if not is_admin_or_manager(current_user):
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
     
-    products = await db.products.find().to_list(500)
+    cf = get_company_filter(current_user)
+    company_id = current_user.get("company_id", "")
+    products = await db.products.find(cf).to_list(500)
     report = []
     
     # Get date range for this week (Monday to now)
@@ -2670,11 +2706,14 @@ async def get_stock_report(current_user: dict = Depends(get_current_user)):
     for product in products:
         product_id = str(product["_id"])
         
-        # Get movements for this product this week
-        movements = await db.stock_movements.find({
+        # Get movements for this product this week (company-scoped)
+        movement_query = {
             "product_id": product_id,
             "created_at": {"$gte": week_start}
-        }).to_list(500)
+        }
+        if company_id:
+            movement_query["company_id"] = company_id
+        movements = await db.stock_movements.find(movement_query).to_list(500)
         
         # Calculate totals by movement type
         received = sum(m.get("net_quantity", m.get("quantity", 0)) for m in movements if m.get("movement_type") == "receive")
@@ -2697,18 +2736,21 @@ async def get_stock_report(current_user: dict = Depends(get_current_user)):
         
         # If no sales in movements, check sales collection
         if sold == 0:
-            sales = await db.sales.find({
+            sales_query_sr = {
                 "created_at": {"$gte": week_start},
                 "is_voided": {"$ne": True}
-            }).to_list(2000)
+            }
+            if company_id:
+                sales_query_sr["company_id"] = company_id
+            sales = await db.sales.find(sales_query_sr).to_list(2000)
             
             for sale in sales:
                 for item in sale.get("items", []):
                     if item.get("product_id") == product_id:
                         sold += (item.get("quantity_delivered", 0) - item.get("quantity_returned", 0))
         
-        # Current stock
-        stock = await db.stock.find_one({"product_id": product_id})
+        # Current stock (company-scoped)
+        stock = await db.stock.find_one({"product_id": product_id, "company_id": company_id})
         closing = stock.get("quantity", 0) if stock else 0
         
         # Calculate opening (closing - received - adjustments + sold + damages + rejected + spoilt)
@@ -4114,26 +4156,18 @@ async def get_orders(
     date_str: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get orders - filtered by role"""
+    """Get orders - filtered by role. Drivers cannot view orders."""
     query = {}
     
     if is_customer(current_user):
         query["customer_id"] = current_user["id"]
+    elif current_user.get("role") == "driver":
+        # Drivers should NOT see orders - admin dispatches orders to drivers
+        raise HTTPException(status_code=403, detail="Drivers cannot view orders. Orders are managed by admin.")
     else:
-        # Distributor staff see their company's orders
+        # Admin/Manager see their company's orders
         cf = get_company_filter(current_user)
         query.update(cf)
-        
-        # Drivers only see their route's orders
-        if current_user.get("role") == "driver":
-            active_route = await db.daily_routes.find_one({
-                "driver_id": current_user["id"],
-                "status": "active"
-            })
-            if active_route:
-                query["route_id"] = active_route.get("route_id")
-            else:
-                return []
     
     if status:
         query["status"] = status
@@ -4316,6 +4350,247 @@ async def get_route_packing_summary(route_id: str, current_user: dict = Depends(
         "total_orders": len(orders),
         "products": list(product_totals.values()),
     }
+
+
+# ==================== VEHICLE STOCK DISPATCH & RETURN ====================
+
+class VehicleStockItem(BaseModel):
+    product_id: str
+    product_name: str
+    quantity: int
+
+class VehicleStockDispatch(BaseModel):
+    daily_route_id: str
+    items: List[VehicleStockItem]
+    notes: Optional[str] = None
+
+class VehicleStockReturn(BaseModel):
+    daily_route_id: str
+    items: List[VehicleStockItem]
+    notes: Optional[str] = None
+
+@api_router.post("/vehicle-stock/dispatch")
+async def dispatch_vehicle_stock(data: VehicleStockDispatch, current_user: dict = Depends(get_current_user)):
+    """Admin dispatches/loads stock onto a vehicle for a daily route"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    company_id = current_user.get("company_id", "")
+    
+    # Get daily route info
+    daily_route = await db.daily_routes.find_one({"_id": ObjectId(data.daily_route_id)})
+    if not daily_route:
+        raise HTTPException(status_code=404, detail="Daily route not found")
+    
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    dispatched_items = []
+    
+    for item in data.items:
+        if item.quantity <= 0:
+            continue
+        
+        # Check warehouse stock availability (company-scoped)
+        stock = await db.stock.find_one({"product_id": item.product_id, "company_id": company_id})
+        available = stock.get("quantity", 0) if stock else 0
+        
+        if available < item.quantity:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Insufficient stock for {item.product_name}. Available: {available}, Requested: {item.quantity}"
+            )
+        
+        # Deduct from warehouse stock
+        await db.stock.update_one(
+            {"product_id": item.product_id, "company_id": company_id},
+            {"$inc": {"quantity": -item.quantity}, "$set": {"updated_at": datetime.utcnow()}}
+        )
+        
+        # Add/update vehicle stock record
+        existing = await db.vehicle_stock.find_one({
+            "daily_route_id": data.daily_route_id,
+            "product_id": item.product_id,
+            "status": "active"
+        })
+        
+        if existing:
+            await db.vehicle_stock.update_one(
+                {"_id": existing["_id"]},
+                {"$inc": {"quantity_loaded": item.quantity, "quantity_remaining": item.quantity},
+                 "$set": {"updated_at": datetime.utcnow()}}
+            )
+        else:
+            await db.vehicle_stock.insert_one({
+                "daily_route_id": data.daily_route_id,
+                "vehicle_id": daily_route.get("vehicle_id", ""),
+                "vehicle_name": daily_route.get("vehicle_name", ""),
+                "driver_id": daily_route.get("driver_id", ""),
+                "driver_name": daily_route.get("driver_name", ""),
+                "route_id": daily_route.get("route_id", ""),
+                "route_name": daily_route.get("route_name", ""),
+                "product_id": item.product_id,
+                "product_name": item.product_name,
+                "quantity_loaded": item.quantity,
+                "quantity_sold": 0,
+                "quantity_returned": 0,
+                "quantity_remaining": item.quantity,
+                "date": today,
+                "status": "active",
+                "company_id": company_id,
+                "dispatched_by": current_user["id"],
+                "dispatched_by_name": current_user["name"],
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            })
+        
+        # Log the dispatch movement
+        await db.stock_movements.insert_one({
+            "movement_type": "dispatch_to_vehicle",
+            "product_id": item.product_id,
+            "product_name": item.product_name,
+            "quantity": -item.quantity,
+            "daily_route_id": data.daily_route_id,
+            "vehicle_name": daily_route.get("vehicle_name", ""),
+            "driver_name": daily_route.get("driver_name", ""),
+            "company_id": company_id,
+            "personnel_id": current_user["id"],
+            "personnel_name": current_user["name"],
+            "created_at": datetime.utcnow()
+        })
+        
+        dispatched_items.append({
+            "product_id": item.product_id,
+            "product_name": item.product_name,
+            "quantity_loaded": item.quantity,
+        })
+    
+    return {
+        "message": f"Stock dispatched to {daily_route.get('vehicle_name', 'vehicle')} ({daily_route.get('driver_name', 'driver')})",
+        "daily_route_id": data.daily_route_id,
+        "items": dispatched_items,
+    }
+
+@api_router.post("/vehicle-stock/return")
+async def return_vehicle_stock(data: VehicleStockReturn, current_user: dict = Depends(get_current_user)):
+    """Admin receives unsold stock returning from a vehicle/route"""
+    if not is_admin_or_manager(current_user):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    
+    company_id = current_user.get("company_id", "")
+    
+    daily_route = await db.daily_routes.find_one({"_id": ObjectId(data.daily_route_id)})
+    if not daily_route:
+        raise HTTPException(status_code=404, detail="Daily route not found")
+    
+    returned_items = []
+    
+    for item in data.items:
+        if item.quantity <= 0:
+            continue
+        
+        # Update vehicle stock record
+        vs = await db.vehicle_stock.find_one({
+            "daily_route_id": data.daily_route_id,
+            "product_id": item.product_id,
+            "status": "active"
+        })
+        
+        if vs:
+            await db.vehicle_stock.update_one(
+                {"_id": vs["_id"]},
+                {
+                    "$inc": {"quantity_returned": item.quantity, "quantity_remaining": -item.quantity},
+                    "$set": {"updated_at": datetime.utcnow()}
+                }
+            )
+        
+        # Add back to warehouse stock (company-scoped)
+        await db.stock.update_one(
+            {"product_id": item.product_id, "company_id": company_id},
+            {"$inc": {"quantity": item.quantity}, "$set": {"updated_at": datetime.utcnow()}}
+        )
+        
+        # Log the return movement
+        await db.stock_movements.insert_one({
+            "movement_type": "return_from_vehicle",
+            "product_id": item.product_id,
+            "product_name": item.product_name,
+            "quantity": item.quantity,
+            "daily_route_id": data.daily_route_id,
+            "vehicle_name": daily_route.get("vehicle_name", ""),
+            "driver_name": daily_route.get("driver_name", ""),
+            "company_id": company_id,
+            "personnel_id": current_user["id"],
+            "personnel_name": current_user["name"],
+            "notes": data.notes,
+            "created_at": datetime.utcnow()
+        })
+        
+        returned_items.append({
+            "product_id": item.product_id,
+            "product_name": item.product_name,
+            "quantity_returned": item.quantity,
+        })
+    
+    # Close out vehicle stock records if route is completed
+    if daily_route.get("status") == "completed":
+        await db.vehicle_stock.update_many(
+            {"daily_route_id": data.daily_route_id, "status": "active"},
+            {"$set": {"status": "closed", "closed_at": datetime.utcnow()}}
+        )
+    
+    return {
+        "message": f"Stock returned from {daily_route.get('vehicle_name', 'vehicle')}",
+        "daily_route_id": data.daily_route_id,
+        "items": returned_items,
+    }
+
+@api_router.get("/vehicle-stock/{daily_route_id}")
+async def get_vehicle_stock(daily_route_id: str, current_user: dict = Depends(get_current_user)):
+    """Get stock loaded on a vehicle for a specific daily route"""
+    daily_route = await db.daily_routes.find_one({"_id": ObjectId(daily_route_id)})
+    if not daily_route:
+        raise HTTPException(status_code=404, detail="Daily route not found")
+    
+    items = await db.vehicle_stock.find({
+        "daily_route_id": daily_route_id,
+        "status": "active"
+    }).to_list(500)
+    
+    return {
+        "daily_route_id": daily_route_id,
+        "route_name": daily_route.get("route_name", ""),
+        "vehicle_name": daily_route.get("vehicle_name", ""),
+        "driver_name": daily_route.get("driver_name", ""),
+        "date": daily_route.get("date", ""),
+        "items": [str_id(i) for i in items],
+        "total_loaded": sum(i.get("quantity_loaded", 0) for i in items),
+        "total_sold": sum(i.get("quantity_sold", 0) for i in items),
+        "total_remaining": sum(i.get("quantity_remaining", 0) for i in items),
+        "total_returned": sum(i.get("quantity_returned", 0) for i in items),
+    }
+
+@api_router.get("/vehicle-stock/driver/my-stock")
+async def get_driver_vehicle_stock(current_user: dict = Depends(get_current_user)):
+    """Driver views what stock has been loaded onto their vehicle for today"""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    items = await db.vehicle_stock.find({
+        "driver_id": current_user["id"],
+        "date": today,
+        "status": "active"
+    }).to_list(500)
+    
+    if not items:
+        return {"items": [], "message": "No stock has been loaded onto your vehicle yet."}
+    
+    return {
+        "items": [str_id(i) for i in items],
+        "vehicle_name": items[0].get("vehicle_name", "") if items else "",
+        "route_name": items[0].get("route_name", "") if items else "",
+        "total_loaded": sum(i.get("quantity_loaded", 0) for i in items),
+        "total_remaining": sum(i.get("quantity_remaining", 0) for i in items),
+    }
+
 
 # ==================== DELIVERY TRACKING (P2) ====================
 
@@ -4527,10 +4802,10 @@ async def get_route_deliveries(route_id: str, current_user: dict = Depends(get_c
 async def get_support_info():
     """Get app support and contact information"""
     return {
-        "company": "Mzafri Distribution",
+        "company": "Mzansi FMCG Tracker",
         "website": "www.mzafri.co.za",
         "support_email": "supportapp@mzafri.co.za",
-        "contact_number": "+27 71 876 5600",
+        "contact_number": "+27628138949",
         "app_name": "Mzansi FMCG Tracker",
         "version": "1.0.0"
     }

@@ -15,6 +15,8 @@ interface Order {
   status: string;
   total_amount: number;
   items: { product_name: string; quantity: number; unit_price: number }[];
+  original_items?: { product_name: string; quantity: number; unit_price: number }[];
+  adjustment_reason?: string;
   delivery_day: string;
   delivery_date: string;
   created_at: string;
@@ -82,6 +84,7 @@ export default function OrdersScreen() {
     { label: 'All', value: null },
     { label: 'Pending', value: 'pending' },
     { label: 'Confirmed', value: 'confirmed' },
+    { label: 'Adjusted', value: 'adjusted' },
     { label: 'Delivered', value: 'delivered' },
     { label: 'Cancelled', value: 'cancelled' },
   ];
@@ -166,6 +169,35 @@ export default function OrdersScreen() {
                     <Text style={styles.moreItems}>+{order.items.length - 3} more items</Text>
                   )}
                 </View>
+
+                {/* Adjustment Notice */}
+                {order.status === 'adjusted' && (
+                  <View style={styles.adjustmentBanner}>
+                    <Ionicons name="alert-circle" size={16} color="#F59E0B" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.adjustmentTitle}>Order Adjusted</Text>
+                      {order.adjustment_reason ? (
+                        <Text style={styles.adjustmentReason}>{order.adjustment_reason}</Text>
+                      ) : null}
+                      {order.original_items && order.original_items.length > 0 && (
+                        <View style={styles.adjustmentDetails}>
+                          {order.original_items.map((origItem, idx) => {
+                            const currentItem = order.items.find(i => i.product_name === origItem.product_name);
+                            const currentQty = currentItem ? currentItem.quantity : 0;
+                            if (origItem.quantity !== currentQty) {
+                              return (
+                                <Text key={idx} style={styles.adjustmentItem}>
+                                  {origItem.product_name}: {origItem.quantity} → {currentQty}
+                                </Text>
+                              );
+                            }
+                            return null;
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
 
                 <View style={styles.orderCardFooter}>
                   {order.delivery_day ? (
@@ -260,4 +292,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#064E3B', borderRadius: 8, paddingVertical: 8, marginTop: 12,
   },
   deliveredTagText: { color: '#10B981', fontSize: 13, fontWeight: '600' },
+  adjustmentBanner: {
+    flexDirection: 'row', gap: 8, backgroundColor: '#1E3348',
+    borderRadius: 10, padding: 12, marginBottom: 12,
+    borderLeftWidth: 3, borderLeftColor: '#F59E0B',
+  },
+  adjustmentTitle: { fontSize: 13, fontWeight: '700', color: '#F59E0B' },
+  adjustmentReason: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  adjustmentDetails: { marginTop: 6 },
+  adjustmentItem: { fontSize: 12, color: '#CBD5E1', marginBottom: 1 },
 });

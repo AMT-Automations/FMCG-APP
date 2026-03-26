@@ -687,6 +687,46 @@ class ApiService {
     const response = await this.client.get(`/daily-routes/${dailyRouteId}/deliveries`);
     return response.data;
   }
+
+  // ==================== VEHICLE STOCK DISPATCH ====================
+
+  // Admin: Dispatch stock to a vehicle
+  async dispatchVehicleStock(data: {
+    daily_route_id: string;
+    items: { product_id: string; product_name: string; quantity: number }[];
+    notes?: string;
+  }) {
+    const response = await this.client.post('/vehicle-stock/dispatch', data);
+    return response.data;
+  }
+
+  // Admin: Receive returned stock from vehicle
+  async returnVehicleStock(data: {
+    daily_route_id: string;
+    items: { product_id: string; product_name: string; quantity: number }[];
+    notes?: string;
+  }) {
+    const response = await this.client.post('/vehicle-stock/return', data);
+    return response.data;
+  }
+
+  // Get stock loaded on a vehicle for a specific daily route
+  async getVehicleStock(dailyRouteId: string) {
+    const response = await this.client.get(`/vehicle-stock/${dailyRouteId}`);
+    return response.data;
+  }
+
+  // Driver: Get my vehicle stock for today
+  async getMyVehicleStock() {
+    const response = await this.client.get('/vehicle-stock/driver/my-stock');
+    return response.data;
+  }
+
+  // Get support info
+  async getSupportInfo() {
+    const response = await this.client.get('/support-info');
+    return response.data;
+  }
 }
 
 export const api = new ApiService();

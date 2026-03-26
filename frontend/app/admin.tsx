@@ -567,15 +567,7 @@ export default function AdminDashboard() {
                     <Ionicons name="pencil" size={16} color="#3B82F6" />
                     <Text style={styles.cardActionText}>Edit</Text>
                   </TouchableOpacity>
-                  {u.is_active !== false && u.id !== user?.id && (
-                    <TouchableOpacity 
-                      style={styles.cardAction}
-                      onPress={() => deactivateUser(u)}
-                    >
-                      <Ionicons name="close-circle" size={16} color="#EF4444" />
-                      <Text style={[styles.cardActionText, { color: '#EF4444' }]}>Deactivate</Text>
-                    </TouchableOpacity>
-                  )}
+                  {/* Deactivation removed - backend only */}
                 </View>
               </TouchableOpacity>
             ))}
@@ -625,15 +617,7 @@ export default function AdminDashboard() {
                     <Ionicons name="pencil" size={16} color="#3B82F6" />
                     <Text style={styles.cardActionText}>Edit</Text>
                   </TouchableOpacity>
-                  {v.is_active !== false && (
-                    <TouchableOpacity 
-                      style={styles.cardAction}
-                      onPress={() => deactivateVehicle(v)}
-                    >
-                      <Ionicons name="close-circle" size={16} color="#EF4444" />
-                      <Text style={[styles.cardActionText, { color: '#EF4444' }]}>Deactivate</Text>
-                    </TouchableOpacity>
-                  )}
+                  {/* Deactivation removed - backend only */}
                 </View>
               </TouchableOpacity>
             ))}

@@ -11,7 +11,7 @@ from datetime import datetime
 import time
 
 # Backend URL from review request
-BACKEND_URL = "https://expo-production-2.preview.emergentagent.com/api"
+BACKEND_URL = "https://fmcg-delivery-app-2.preview.emergentagent.com/api"
 
 class IntegrationTester:
     def __init__(self):
