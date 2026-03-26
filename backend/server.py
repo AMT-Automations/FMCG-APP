@@ -1071,6 +1071,33 @@ async def create_sale(sale: SaleCreate, current_user: dict = Depends(get_current
     # Format: INV-YYYYMMDD-ROUTE-0001
     invoice_number = f"INV-{today_str}-{route_code}-{sequence_num:04d}"
     
+    # ===== VEHICLE STOCK ENFORCEMENT =====
+    # Drivers can only sell items that have been loaded onto their vehicle
+    today_date_str_vs = today.strftime("%Y-%m-%d")
+    vehicle_stock_records = await db.vehicle_stock.find({
+        "driver_id": current_user["id"],
+        "date": today_date_str_vs,
+        "status": "active"
+    }).to_list(500)
+    
+    if vehicle_stock_records:
+        # Vehicle stock dispatch exists — enforce limits
+        vs_lookup = {vs["product_id"]: vs.get("quantity_remaining", 0) for vs in vehicle_stock_records}
+        for item in sale.items:
+            net_sold = item.quantity_delivered - item.quantity_returned
+            if net_sold > 0:
+                available_on_vehicle = vs_lookup.get(item.product_id, 0)
+                if available_on_vehicle <= 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{item.product_name} has not been loaded onto your vehicle. Contact admin to dispatch stock."
+                    )
+                if net_sold > available_on_vehicle:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Insufficient vehicle stock for {item.product_name}. Loaded: {available_on_vehicle}, Trying to sell: {net_sold}"
+                    )
+    
     sale_doc = {
         "invoice_number": invoice_number,
         "route_id": sale.route_id,

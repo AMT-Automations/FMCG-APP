@@ -22,6 +22,7 @@ export default function HomeScreen() {
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [vehicleStock, setVehicleStock] = useState<any>(null);
 
   const loadData = async () => {
     try {
@@ -31,6 +32,16 @@ export default function HomeScreen() {
       ]);
       setActiveRoutes(activeRoutesData || []);
       setSummary(summaryData);
+      
+      // Load vehicle stock for drivers
+      if (user?.role === 'driver' || user?.role === 'admin' || user?.role === 'manager') {
+        try {
+          const vs = await api.getMyVehicleStock();
+          setVehicleStock(vs);
+        } catch (e) {
+          setVehicleStock(null);
+        }
+      }
     } catch (error) {
       console.error('Error loading home data:', error);
       setActiveRoutes([]);
@@ -243,6 +254,50 @@ export default function HomeScreen() {
             <Ionicons name="add-circle-outline" size={24} color="#3B82F6" />
             <Text style={styles.addRouteText}>Start Another Route</Text>
           </TouchableOpacity>
+        )}
+
+        {/* Vehicle Stock Section - Shows stock loaded on driver's vehicle */}
+        {vehicleStock && vehicleStock.items && vehicleStock.items.length > 0 && (
+          <View style={styles.vehicleStockSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>My Vehicle Stock</Text>
+              <View style={styles.vehicleStockBadge}>
+                <Ionicons name="cube" size={14} color="#10B981" />
+                <Text style={styles.vehicleStockBadgeText}>
+                  {vehicleStock.vehicle_name || 'Vehicle'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.vehicleStockSummary}>
+              <View style={styles.vsSummaryItem}>
+                <Text style={styles.vsSummaryValue}>{vehicleStock.total_loaded}</Text>
+                <Text style={styles.vsSummaryLabel}>Loaded</Text>
+              </View>
+              <View style={styles.vsSummaryItem}>
+                <Text style={[styles.vsSummaryValue, { color: '#F59E0B' }]}>
+                  {vehicleStock.total_remaining}
+                </Text>
+                <Text style={styles.vsSummaryLabel}>Remaining</Text>
+              </View>
+            </View>
+            {vehicleStock.items.map((item: any, idx: number) => (
+              <View key={idx} style={styles.vsItemCard}>
+                <Text style={styles.vsItemName}>{item.product_name}</Text>
+                <View style={styles.vsItemStats}>
+                  <Text style={styles.vsItemLoaded}>Loaded: {item.quantity_loaded}</Text>
+                  <Text style={styles.vsItemRemaining}>Left: {item.quantity_remaining}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+        {vehicleStock && (!vehicleStock.items || vehicleStock.items.length === 0) && activeRoutes.length > 0 && (
+          <View style={styles.noStockBanner}>
+            <Ionicons name="alert-circle-outline" size={20} color="#F59E0B" />
+            <Text style={styles.noStockText}>
+              No stock loaded on your vehicle yet. Contact admin to dispatch stock.
+            </Text>
+          </View>
         )}
 
         {/* Today's Summary */}
@@ -710,5 +765,91 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontWeight: '500',
     textAlign: 'center',
+  },
+  // Vehicle Stock styles
+  vehicleStockSection: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  vehicleStockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#064E3B',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  vehicleStockBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  vehicleStockSummary: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8,
+  },
+  vsSummaryItem: {
+    flex: 1,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+  },
+  vsSummaryValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  vsSummaryLabel: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  vsItemCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  vsItemName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  vsItemStats: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  vsItemLoaded: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  vsItemRemaining: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#F59E0B',
+  },
+  noStockBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
+  },
+  noStockText: {
+    fontSize: 13,
+    color: '#F59E0B',
+    flex: 1,
   },
 });
