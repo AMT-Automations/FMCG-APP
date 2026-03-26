@@ -1353,13 +1353,23 @@ async def start_daily_route(data: DailyRouteStart, current_user: dict = Depends(
         raise HTTPException(status_code=400, detail="This route is already active today")
     
     # Check if this vehicle is already in use
+    # Check if this route is already active today
+    route_already_active = await db.daily_routes.find_one({
+        "route_id": data.route_id,
+        "date": today,
+        "status": "active"
+    })
+    if route_already_active:
+        raise HTTPException(status_code=400, detail=f"This route is already active today. End the current run first.")
+    
+    # Check vehicle availability
     vehicle_in_use = await db.daily_routes.find_one({
         "vehicle_id": data.vehicle_id,
         "date": today,
         "status": "active"
     })
     if vehicle_in_use:
-        raise HTTPException(status_code=400, detail="This vehicle is already in use on another route")
+        raise HTTPException(status_code=400, detail="This vehicle is already in use on another route today")
     
     # Get route name
     route = await db.routes.find_one({"_id": ObjectId(data.route_id)})

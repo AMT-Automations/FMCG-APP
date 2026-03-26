@@ -322,14 +322,20 @@ export default function StartRouteScreen() {
       });
       if (Platform.OS === 'web') {
         window.alert('Route started successfully!');
+        router.back();
+      } else {
+        Alert.alert(
+          'Route Started!',
+          `${selectedRoute!.name} is now active with ${selectedVehicle!.name}.`,
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
       }
-      router.back();
     } catch (error: any) {
-      const msg = error.response?.data?.detail || 'Failed to start route';
+      const msg = error.response?.data?.detail || 'Failed to start route. Please try again.';
       if (Platform.OS === 'web') {
         window.alert('Error: ' + msg);
       } else {
-        Alert.alert('Error', msg);
+        Alert.alert('Error Starting Route', msg);
       }
     } finally {
       setStarting(false);
