@@ -23,7 +23,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [vehicleStock, setVehicleStock] = useState<any>(null);
-  const [showAllStock, setShowAllStock] = useState(false);
+  const [expandedVehicles, setExpandedVehicles] = useState<Record<string, boolean>>({});
 
   const loadData = async () => {
     try {
@@ -257,62 +257,90 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Vehicle Stock Section - Compact: summary + preview + expand */}
-        {vehicleStock && vehicleStock.items && vehicleStock.items.length > 0 && (
+        {/* Vehicle Stock Section - Multi-vehicle accordion */}
+        {vehicleStock && vehicleStock.vehicles && vehicleStock.vehicles.length > 0 && (
           <View style={styles.vehicleStockSection}>
-            <TouchableOpacity
-              style={styles.vsHeaderRow}
-              onPress={() => setShowAllStock(!showAllStock)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="cube" size={18} color="#10B981" />
-              <Text style={styles.vsTitle}>My Vehicle Stock</Text>
-              <View style={styles.vehicleStockBadge}>
-                <Text style={styles.vehicleStockBadgeText}>
-                  {vehicleStock.items.length} {vehicleStock.items.length === 1 ? 'product' : 'products'}
+            {/* Grand summary header */}
+            {vehicleStock.vehicles.length > 1 && (
+              <View style={styles.vsGrandHeader}>
+                <Ionicons name="cube" size={16} color="#10B981" />
+                <Text style={styles.vsGrandTitle}>
+                  Vehicle Stock ({vehicleStock.total_vehicles} {vehicleStock.total_vehicles === 1 ? 'vehicle' : 'vehicles'})
+                </Text>
+                <Text style={styles.vsGrandStats}>
+                  {vehicleStock.grand_total_loaded} loaded • {vehicleStock.grand_total_remaining} left
                 </Text>
               </View>
-              <Text style={styles.vsCompactLoaded}>{vehicleStock.total_loaded} loaded</Text>
-              <Text style={styles.vsCompactSep}>•</Text>
-              <Text style={styles.vsCompactRemaining}>{vehicleStock.total_remaining} left</Text>
-              <Ionicons
-                name={showAllStock ? 'chevron-up' : 'chevron-down'}
-                size={16}
-                color="#64748B"
-              />
-            </TouchableOpacity>
-
-            {showAllStock && (
-              <View style={styles.vsExpandedList}>
-                {/* Column headers */}
-                <View style={styles.vsColumnHeader}>
-                  <Text style={styles.vsColLabel}>Product</Text>
-                  <Text style={styles.vsColLabel}>Loaded</Text>
-                  <Text style={styles.vsColLabel}>Sold</Text>
-                  <Text style={styles.vsColLabel}>Left</Text>
-                </View>
-                <ScrollView style={styles.vsScrollList} nestedScrollEnabled>
-                  {vehicleStock.items.map((item: any, idx: number) => (
-                    <View key={idx} style={styles.vsItemCard}>
-                      <Text style={styles.vsItemName} numberOfLines={1}>{item.product_name}</Text>
-                      <Text style={styles.vsItemLoaded}>{item.quantity_loaded}</Text>
-                      <Text style={styles.vsItemSold}>{item.quantity_sold || 0}</Text>
-                      <Text style={styles.vsItemRemaining}>{item.quantity_remaining}</Text>
-                    </View>
-                  ))}
-                </ScrollView>
-                {/* Vehicle info footer */}
-                <View style={styles.vsFooter}>
-                  <Ionicons name="car" size={14} color="#64748B" />
-                  <Text style={styles.vsFooterText}>
-                    {vehicleStock.vehicle_name || 'Vehicle'} • {vehicleStock.route_name || 'Route'}
-                  </Text>
-                </View>
-              </View>
             )}
+
+            {/* Per-vehicle collapsible cards */}
+            {vehicleStock.vehicles.map((v: any, vIdx: number) => {
+              const isExpanded = expandedVehicles[v.daily_route_id] || false;
+              return (
+                <View key={v.daily_route_id} style={[
+                  styles.vsVehicleCard,
+                  vIdx > 0 && { marginTop: 6 },
+                ]}>
+                  <TouchableOpacity
+                    style={styles.vsHeaderRow}
+                    onPress={() => setExpandedVehicles(prev => ({
+                      ...prev,
+                      [v.daily_route_id]: !prev[v.daily_route_id],
+                    }))}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="cube" size={16} color="#10B981" />
+                    <Text style={styles.vsTitle} numberOfLines={1}>
+                      {vehicleStock.vehicles.length === 1 ? 'My Vehicle Stock' : (v.vehicle_name || 'Vehicle')}
+                    </Text>
+                    <View style={styles.vehicleStockBadge}>
+                      <Text style={styles.vehicleStockBadgeText}>
+                        {v.items.length} {v.items.length === 1 ? 'product' : 'products'}
+                      </Text>
+                    </View>
+                    <Text style={styles.vsCompactLoaded}>{v.total_loaded} loaded</Text>
+                    <Text style={styles.vsCompactSep}>•</Text>
+                    <Text style={styles.vsCompactRemaining}>{v.total_remaining} left</Text>
+                    <Ionicons
+                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color="#64748B"
+                    />
+                  </TouchableOpacity>
+
+                  {isExpanded && (
+                    <View style={styles.vsExpandedList}>
+                      <View style={styles.vsColumnHeader}>
+                        <Text style={[styles.vsColLabel, { textAlign: 'left' }]}>Product</Text>
+                        <Text style={styles.vsColLabel}>Loaded</Text>
+                        <Text style={styles.vsColLabel}>Sold</Text>
+                        <Text style={styles.vsColLabel}>Left</Text>
+                      </View>
+                      <ScrollView style={styles.vsScrollList} nestedScrollEnabled>
+                        {v.items.map((item: any, idx: number) => (
+                          <View key={idx} style={styles.vsItemCard}>
+                            <Text style={styles.vsItemName} numberOfLines={1}>{item.product_name}</Text>
+                            <Text style={styles.vsItemLoaded}>{item.quantity_loaded}</Text>
+                            <Text style={styles.vsItemSold}>{item.quantity_sold || 0}</Text>
+                            <Text style={styles.vsItemRemaining}>{item.quantity_remaining}</Text>
+                          </View>
+                        ))}
+                      </ScrollView>
+                      <View style={styles.vsFooter}>
+                        <Ionicons name="car" size={14} color="#64748B" />
+                        <Text style={styles.vsFooterText}>
+                          {v.vehicle_name || 'Vehicle'} • {v.route_name || 'Route'}
+                          {v.driver_name ? ` • ${v.driver_name}` : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
           </View>
         )}
-        {vehicleStock && (!vehicleStock.items || vehicleStock.items.length === 0) && activeRoutes.length > 0 && (
+        {vehicleStock && (!vehicleStock.vehicles || vehicleStock.vehicles.length === 0) && activeRoutes.length > 0 && (
           <View style={styles.noStockBanner}>
             <Ionicons name="alert-circle-outline" size={20} color="#F59E0B" />
             <Text style={styles.noStockText}>
@@ -787,10 +815,32 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
-  // Vehicle Stock styles - compact collapsible
+  // Vehicle Stock styles - multi-vehicle accordion
   vehicleStockSection: {
     marginHorizontal: 16,
     marginBottom: 16,
+  },
+  vsGrandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 6,
+  },
+  vsGrandTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  vsGrandStats: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontWeight: '600',
+  },
+  vsVehicleCard: {
     backgroundColor: '#1E293B',
     borderRadius: 14,
     overflow: 'hidden',

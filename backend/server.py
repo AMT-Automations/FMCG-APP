@@ -4598,24 +4598,50 @@ async def get_vehicle_stock(daily_route_id: str, current_user: dict = Depends(ge
 
 @api_router.get("/vehicle-stock/driver/my-stock")
 async def get_driver_vehicle_stock(current_user: dict = Depends(get_current_user)):
-    """Driver views what stock has been loaded onto their vehicle for today"""
+    """Driver/Admin views stock loaded onto their vehicle(s) for today, grouped by route/vehicle"""
     today = datetime.utcnow().strftime("%Y-%m-%d")
     
-    items = await db.vehicle_stock.find({
-        "driver_id": current_user["id"],
-        "date": today,
-        "status": "active"
-    }).to_list(500)
+    query = {"date": today, "status": "active"}
+    # Drivers see only their own, admins see all for their company
+    if current_user.get("role") == "driver":
+        query["driver_id"] = current_user["id"]
+    else:
+        company_id = current_user.get("company_id", "")
+        if company_id:
+            query["company_id"] = company_id
+    
+    items = await db.vehicle_stock.find(query).to_list(500)
     
     if not items:
-        return {"items": [], "message": "No stock has been loaded onto your vehicle yet."}
+        return {"vehicles": [], "message": "No stock has been loaded onto any vehicle yet."}
+    
+    # Group by daily_route_id (each represents a unique vehicle/route combo)
+    grouped = {}
+    for item in items:
+        key = item.get("daily_route_id", "unknown")
+        if key not in grouped:
+            grouped[key] = {
+                "daily_route_id": key,
+                "vehicle_name": item.get("vehicle_name", ""),
+                "route_name": item.get("route_name", ""),
+                "driver_name": item.get("driver_name", ""),
+                "items": [],
+                "total_loaded": 0,
+                "total_sold": 0,
+                "total_remaining": 0,
+            }
+        grouped[key]["items"].append(str_id(item))
+        grouped[key]["total_loaded"] += item.get("quantity_loaded", 0)
+        grouped[key]["total_sold"] += item.get("quantity_sold", 0)
+        grouped[key]["total_remaining"] += item.get("quantity_remaining", 0)
+    
+    vehicles = list(grouped.values())
     
     return {
-        "items": [str_id(i) for i in items],
-        "vehicle_name": items[0].get("vehicle_name", "") if items else "",
-        "route_name": items[0].get("route_name", "") if items else "",
-        "total_loaded": sum(i.get("quantity_loaded", 0) for i in items),
-        "total_remaining": sum(i.get("quantity_remaining", 0) for i in items),
+        "vehicles": vehicles,
+        "total_vehicles": len(vehicles),
+        "grand_total_loaded": sum(v["total_loaded"] for v in vehicles),
+        "grand_total_remaining": sum(v["total_remaining"] for v in vehicles),
     }
 
 
