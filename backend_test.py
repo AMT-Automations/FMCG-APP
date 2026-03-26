@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Backend Test for Mzansi FMCG Tracker - NEW Marketplace Model Endpoints Testing
-Tests the specific marketplace endpoints as mentioned in the review request
+Backend Test for Vehicle Stock Return Functionality
+Tests the specific vehicle stock return flow as mentioned in the review request
 """
 
 import requests
@@ -23,53 +23,32 @@ def print_result(success, message, data=None):
     if data:
         print(f"Data: {json.dumps(data, indent=2)}")
 
-def test_database_seed():
-    """Test 1: Database Seed - POST /api/admin/reset-and-seed"""
-    print_test_header("Database Seed & Data Verification")
+def print_step(step_num, description, expected=None, actual=None):
+    print(f"\nSTEP {step_num}: {description}")
+    if expected is not None:
+        print(f"Expected: {expected}")
+    if actual is not None:
+        print(f"Actual: {actual}")
+
+def test_vehicle_stock_return_flow():
+    """Test the complete vehicle stock return flow as specified in review request"""
+    print_test_header("Vehicle Stock Return Flow Test")
     
     try:
-        # Seed the database
+        # STEP 1: POST /api/admin/reset-and-seed — seed fresh data
+        print_step(1, "POST /api/admin/reset-and-seed — seed fresh data")
         response = requests.post(f"{BASE_URL}/admin/reset-and-seed", timeout=30)
         print(f"Status Code: {response.status_code}")
         
-        if response.status_code == 200:
-            data = response.json()
-            print_result(True, "Database seeded successfully", data)
-            
-            # Verify expected counts
-            companies = data.get("companies", [])
-            customers = data.get("customers", [])
-            routes = data.get("routes", 0)
-            vehicles = data.get("vehicles", 0)
-            products = data.get("products", 0)
-            
-            expected_companies = 3
-            expected_customers = 2
-            expected_routes = 4
-            expected_vehicles = 4
-            expected_products = 17  # 8 + 5 + 4 = 17 total products
-            
-            success = (len(companies) == expected_companies and 
-                      len(customers) == expected_customers and
-                      routes == expected_routes and
-                      vehicles == expected_vehicles and
-                      products == expected_products)
-            
-            print_result(success, f"Seed verification: {len(companies)} companies, {len(customers)} customers, {routes} routes, {vehicles} vehicles, {products} products")
-            
-            return success, data
-        else:
+        if response.status_code != 200:
             print_result(False, f"Database seed failed with status {response.status_code}: {response.text}")
-            return False, None
-    except Exception as e:
-        print_result(False, f"Database seed error: {str(e)}")
-        return False, None
-
-def test_admin_login():
-    """Test 2: Admin Login - POST /api/auth/login with Mzansi Distribution admin"""
-    print_test_header("Admin Login Test")
-    
-    try:
+            return False
+        
+        seed_data = response.json()
+        print_result(True, "Database seeded successfully")
+        
+        # STEP 2: POST /api/auth/login with phone=0767862760, pin=1984 — get admin token
+        print_step(2, "POST /api/auth/login with phone=0767862760, pin=1984 — get admin token")
         login_data = {
             "phone": "0767862760",
             "pin": "1984"
@@ -78,450 +57,313 @@ def test_admin_login():
         response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
         print(f"Status Code: {response.status_code}")
         
-        if response.status_code == 200:
-            data = response.json()
-            token = data.get("token")
-            user = data.get("user", {})
-            user_role = user.get("role")
-            name = user.get("name")
-            
-            success = token and user_role == "admin" and name
-            print_result(success, f"Admin login successful - Name: {name}, Role: {user_role}")
-            
-            return success, token
-        else:
+        if response.status_code != 200:
             print_result(False, f"Admin login failed with status {response.status_code}: {response.text}")
-            return False, None
-    except Exception as e:
-        print_result(False, f"Admin login error: {str(e)}")
-        return False, None
-
-def test_location_endpoints():
-    """Test 3: Location Endpoints - provinces, districts, areas"""
-    print_test_header("Location Endpoints Test")
-    
-    results = []
-    
-    # Test 1: Get provinces (no auth needed)
-    try:
-        response = requests.get(f"{BASE_URL}/locations/provinces", timeout=10)
-        if response.status_code == 200:
-            provinces = response.json()
-            success = len(provinces) == 9
-            print_result(success, f"Provinces endpoint: {len(provinces)} provinces returned")
-            results.append(success)
-        else:
-            print_result(False, f"Provinces endpoint failed: {response.status_code}")
-            results.append(False)
-    except Exception as e:
-        print_result(False, f"Provinces endpoint error: {str(e)}")
-        results.append(False)
-    
-    # Test 2: Get districts for Gauteng
-    try:
-        response = requests.get(f"{BASE_URL}/locations/districts/Gauteng", timeout=10)
-        if response.status_code == 200:
-            districts = response.json()
-            success = len(districts) > 0 and "City of Johannesburg" in districts
-            print_result(success, f"Gauteng districts: {len(districts)} districts returned")
-            results.append(success)
-        else:
-            print_result(False, f"Districts endpoint failed: {response.status_code}")
-            results.append(False)
-    except Exception as e:
-        print_result(False, f"Districts endpoint error: {str(e)}")
-        results.append(False)
-    
-    # Test 3: Get areas for City of Johannesburg
-    try:
-        response = requests.get(f"{BASE_URL}/locations/areas/Gauteng/City%20of%20Johannesburg", timeout=10)
-        if response.status_code == 200:
-            areas = response.json()
-            success = len(areas) > 0 and "Soweto" in areas
-            print_result(success, f"Johannesburg areas: {len(areas)} areas returned, includes Soweto")
-            results.append(success)
-        else:
-            print_result(False, f"Areas endpoint failed: {response.status_code}")
-            results.append(False)
-    except Exception as e:
-        print_result(False, f"Areas endpoint error: {str(e)}")
-        results.append(False)
-    
-    return all(results)
-
-def test_customer_login():
-    """Test 4: Customer Login - POST /api/auth/login with customer credentials"""
-    print_test_header("Customer Login Test (Thabo's Spaza)")
-    
-    try:
-        login_data = {
-            "phone": "0831001001",
-            "pin": "1111"
-        }
+            return False
         
-        response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
-        print(f"Status Code: {response.status_code}")
+        login_response = response.json()
+        admin_token = login_response.get("token")
+        user = login_response.get("user", {})
         
-        if response.status_code == 200:
-            data = response.json()
-            token = data.get("token")
-            user = data.get("user", {})
-            user_role = user.get("role")
-            name = user.get("name")
-            
-            success = token and user_role == "customer" and name
-            print_result(success, f"Customer login successful - Name: {name}, Role: {user_role}")
-            
-            return success, token
-        else:
-            print_result(False, f"Customer login failed with status {response.status_code}: {response.text}")
-            return False, None
-    except Exception as e:
-        print_result(False, f"Customer login error: {str(e)}")
-        return False, None
-
-def test_marketplace_available_companies(customer_token):
-    """Test 5: Marketplace Available Companies - GET /api/customer/available-companies"""
-    print_test_header("Marketplace Available Companies Test")
-    
-    try:
-        headers = {"Authorization": f"Bearer {customer_token}"}
-        response = requests.get(f"{BASE_URL}/customer/available-companies", headers=headers, timeout=10)
-        print(f"Status Code: {response.status_code}")
+        if not admin_token or user.get("role") != "admin":
+            print_result(False, "Admin login failed - no token or not admin role")
+            return False
         
-        if response.status_code == 200:
-            companies = response.json()
-            
-            # Should return companies that deliver to Soweto area (Mzansi Distribution)
-            success = len(companies) > 0
-            print_result(success, f"Available companies: {len(companies)} companies found")
-            
-            for company in companies:
-                name = company.get("name", "")
-                product_count = company.get("product_count", 0)
-                routes = company.get("routes", [])
-                print(f"  - {name}: {product_count} products, {len(routes)} routes")
-            
-            return success, companies
-        else:
-            print_result(False, f"Available companies failed with status {response.status_code}: {response.text}")
-            return False, None
-    except Exception as e:
-        print_result(False, f"Available companies error: {str(e)}")
-        return False, None
-
-def test_marketplace_company_products(customer_token, company_id):
-    """Test 6: Company Products - GET /api/customer/company/{company_id}/products"""
-    print_test_header("Marketplace Company Products Test")
-    
-    try:
-        headers = {"Authorization": f"Bearer {customer_token}"}
-        response = requests.get(f"{BASE_URL}/customer/company/{company_id}/products", headers=headers, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            company_info = data.get("company", {})
-            products = data.get("products", [])
-            route = data.get("route", {})
-            next_delivery = data.get("next_delivery", {})
-            
-            success = len(products) > 0 and company_info and route
-            print_result(success, f"Company products: {len(products)} products, route: {route.get('name', 'N/A')}")
-            
-            if next_delivery:
-                print(f"Next delivery: {next_delivery.get('delivery_day', 'N/A')} - {next_delivery.get('delivery_date', 'N/A')}")
-            
-            return success, data
-        else:
-            print_result(False, f"Company products failed with status {response.status_code}: {response.text}")
-            return False, None
-    except Exception as e:
-        print_result(False, f"Company products error: {str(e)}")
-        return False, None
-
-def test_marketplace_place_order(customer_token, company_id):
-    """Test 7: Place Order - POST /api/orders"""
-    print_test_header("Marketplace Place Order Test")
-    
-    try:
-        headers = {"Authorization": f"Bearer {customer_token}"}
-        order_data = {
-            "company_id": company_id,
-            "items": [
-                {
-                    "product_id": "test_product_1",
-                    "product_name": "White Bread",
-                    "quantity": 5,
-                    "unit_price": 18.50
-                }
-            ],
-            "notes": "Test order from marketplace"
-        }
-        
-        response = requests.post(f"{BASE_URL}/orders", json=order_data, headers=headers, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            order_number = data.get("order_number", "")
-            company_name = data.get("company_name", "")
-            route_id = data.get("route_id", "")
-            total_amount = data.get("total_amount", 0)
-            
-            success = order_number and company_name and total_amount > 0
-            print_result(success, f"Order placed: {order_number}, Company: {company_name}, Total: R{total_amount}")
-            
-            return success, data
-        else:
-            print_result(False, f"Place order failed with status {response.status_code}: {response.text}")
-            return False, None
-    except Exception as e:
-        print_result(False, f"Place order error: {str(e)}")
-        return False, None
-
-def test_route_creation_with_location(admin_token):
-    """Test 8: Route Creation with Location - POST /api/routes"""
-    print_test_header("Route Creation with Location Test")
-    
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        route_data = {
-            "name": "Test Route",
-            "province": "Gauteng",
-            "district": "City of Johannesburg", 
-            "areas_covered": ["Soweto", "Orlando"],
-            "delivery_schedule": {
-                "delivery_days": ["Monday", "Friday"],
-                "cut_off_time": "16:00",
-                "cut_off_hours_before": 16
-            },
-            "description": "Test route for marketplace testing"
-        }
-        
-        response = requests.post(f"{BASE_URL}/routes", json=route_data, headers=headers, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code in [200, 201]:  # Accept both 200 and 201
-            data = response.json()
-            route_name = data.get("name", "")
-            province = data.get("province", "")
-            areas = data.get("areas_covered", [])
-            schedule = data.get("delivery_schedule", {})
-            
-            success = route_name == "Test Route" and province == "Gauteng" and len(areas) == 2
-            print_result(success, f"Route created: {route_name}, Province: {province}, Areas: {areas}")
-            
-            return success, data
-        else:
-            print_result(False, f"Route creation failed with status {response.status_code}: {response.text}")
-            return False, None
-    except Exception as e:
-        print_result(False, f"Route creation error: {str(e)}")
-        return False, None
-
-def test_start_daily_route(admin_token):
-    """Test 9: Start Daily Route - POST /api/daily-routes/start"""
-    print_test_header("Start Daily Route Test")
-    
-    try:
+        print_result(True, f"Admin login successful - Name: {user.get('name')}, Role: {user.get('role')}")
         headers = {"Authorization": f"Bearer {admin_token}"}
         
-        # First, get available routes and vehicles
-        routes_response = requests.get(f"{BASE_URL}/routes", headers=headers, timeout=10)
-        vehicles_response = requests.get(f"{BASE_URL}/vehicles/available", headers=headers, timeout=10)
+        # STEP 3: GET /api/products — pick first product, note its product_id
+        print_step(3, "GET /api/products — pick first product, note its product_id")
+        response = requests.get(f"{BASE_URL}/products", headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
         
-        if routes_response.status_code != 200 or vehicles_response.status_code != 200:
-            print_result(False, "Failed to get routes or vehicles")
-            return False, None
+        if response.status_code != 200:
+            print_result(False, f"Get products failed with status {response.status_code}: {response.text}")
+            return False
         
-        routes = routes_response.json()
-        vehicles = vehicles_response.json()
+        products = response.json()
+        if not products:
+            print_result(False, "No products found")
+            return False
         
-        if not routes or not vehicles:
-            print_result(False, "No routes or vehicles available")
-            return False, None
+        test_product = products[0]
+        product_id = test_product["id"]
+        product_name = test_product["name"]
+        print_result(True, f"Selected product: {product_name} (ID: {product_id})")
         
-        route_id = routes[0]["id"]
-        vehicle_id = vehicles[0]["id"]
+        # STEP 4: GET /api/stock/levels — note the INITIAL warehouse quantity for that product
+        print_step(4, "GET /api/stock/levels — note the INITIAL warehouse quantity")
+        response = requests.get(f"{BASE_URL}/stock/levels", headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
         
-        route_data = {
+        if response.status_code != 200:
+            print_result(False, f"Get stock levels failed with status {response.status_code}: {response.text}")
+            return False
+        
+        stock_levels = response.json()
+        initial_stock = None
+        for stock in stock_levels:
+            if stock["product_id"] == product_id:
+                initial_stock = stock["current_quantity"]
+                break
+        
+        if initial_stock is None:
+            print_result(False, f"No stock found for product {product_name}")
+            return False
+        
+        INITIAL_QTY = initial_stock
+        print_result(True, f"INITIAL warehouse quantity for {product_name}: {INITIAL_QTY}")
+        
+        # If initial stock is 0, we need to add some stock first
+        if INITIAL_QTY == 0:
+            print_step("4a", "POST /api/stock/receive — add initial stock to warehouse")
+            receive_data = {
+                "product_id": product_id,
+                "product_name": product_name,
+                "quantity": 100,
+                "supplier": "Test Supplier",
+                "batch_reference": "TEST001"
+            }
+            
+            response = requests.post(f"{BASE_URL}/stock/receive", json=receive_data, headers=headers, timeout=10)
+            print(f"Status Code: {response.status_code}")
+            
+            if response.status_code not in [200, 201]:
+                print_result(False, f"Stock receive failed with status {response.status_code}: {response.text}")
+                return False
+            
+            print_result(True, f"Added 100 units of {product_name} to warehouse")
+            
+            # Get updated stock levels
+            response = requests.get(f"{BASE_URL}/stock/levels", headers=headers, timeout=10)
+            if response.status_code == 200:
+                stock_levels = response.json()
+                for stock in stock_levels:
+                    if stock["product_id"] == product_id:
+                        INITIAL_QTY = stock["current_quantity"]
+                        break
+                print_result(True, f"UPDATED warehouse quantity for {product_name}: {INITIAL_QTY}")
+            else:
+                print_result(False, "Failed to get updated stock levels")
+                return False
+        
+        # STEP 5: GET /api/routes — pick first route
+        print_step(5, "GET /api/routes — pick first route")
+        response = requests.get(f"{BASE_URL}/routes", headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code != 200:
+            print_result(False, f"Get routes failed with status {response.status_code}: {response.text}")
+            return False
+        
+        routes = response.json()
+        if not routes:
+            print_result(False, "No routes found")
+            return False
+        
+        test_route = routes[0]
+        route_id = test_route["id"]
+        route_name = test_route["name"]
+        print_result(True, f"Selected route: {route_name} (ID: {route_id})")
+        
+        # STEP 6: GET /api/vehicles — pick first vehicle
+        print_step(6, "GET /api/vehicles — pick first vehicle")
+        response = requests.get(f"{BASE_URL}/vehicles", headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code != 200:
+            print_result(False, f"Get vehicles failed with status {response.status_code}: {response.text}")
+            return False
+        
+        vehicles = response.json()
+        if not vehicles:
+            print_result(False, "No vehicles found")
+            return False
+        
+        test_vehicle = vehicles[0]
+        vehicle_id = test_vehicle["id"]
+        vehicle_name = test_vehicle["name"]
+        print_result(True, f"Selected vehicle: {vehicle_name} (ID: {vehicle_id})")
+        
+        # STEP 7: POST /api/daily-routes/start with route_id, vehicle_id — get daily_route_id
+        print_step(7, "POST /api/daily-routes/start with route_id, vehicle_id — get daily_route_id")
+        daily_route_data = {
             "route_id": route_id,
             "vehicle_id": vehicle_id,
-            "opening_km": 15000,  # Changed from opening_kilometres to opening_km
+            "opening_km": 15000,
             "crates_out": 50
         }
         
-        response = requests.post(f"{BASE_URL}/daily-routes/start", json=route_data, headers=headers, timeout=10)
+        response = requests.post(f"{BASE_URL}/daily-routes/start", json=daily_route_data, headers=headers, timeout=10)
         print(f"Status Code: {response.status_code}")
         
-        if response.status_code in [200, 201]:  # Accept both 200 and 201
-            data = response.json()
-            vehicle_name = data.get("vehicle_name", "")
-            route_name = data.get("route_name", "")
-            
-            success = vehicle_name and route_name
-            print_result(success, f"Daily route started: Route {route_name}, Vehicle: {vehicle_name}")
-            
-            return success, data
-        else:
+        if response.status_code not in [200, 201]:
             print_result(False, f"Start daily route failed with status {response.status_code}: {response.text}")
-            return False, None
-    except Exception as e:
-        print_result(False, f"Start daily route error: {str(e)}")
-        return False, None
-
-def test_second_customer_login_and_availability():
-    """Test 10: Second Customer Test - Nomsa in Umlazi KZN"""
-    print_test_header("Second Customer Test (Nomsa's Tuck Shop - Umlazi KZN)")
-    
-    try:
-        # Login as Nomsa
-        login_data = {
-            "phone": "0842002002", 
-            "pin": "2222"
+            return False
+        
+        daily_route_response = response.json()
+        daily_route_id = daily_route_response["id"]
+        print_result(True, f"Daily route started successfully (ID: {daily_route_id})")
+        
+        # STEP 8: POST /api/vehicle-stock/dispatch with daily_route_id, items: [{product_id, product_name, quantity: 30}]
+        print_step(8, "POST /api/vehicle-stock/dispatch — dispatch 30 units to vehicle")
+        dispatch_data = {
+            "daily_route_id": daily_route_id,
+            "items": [
+                {
+                    "product_id": product_id,
+                    "product_name": product_name,
+                    "quantity": 30
+                }
+            ]
         }
         
-        response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
-        print(f"Login Status Code: {response.status_code}")
+        response = requests.post(f"{BASE_URL}/vehicle-stock/dispatch", json=dispatch_data, headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code not in [200, 201]:
+            print_result(False, f"Vehicle stock dispatch failed with status {response.status_code}: {response.text}")
+            return False
+        
+        dispatch_response = response.json()
+        print_result(True, f"Dispatched 30 units of {product_name} to vehicle")
+        
+        # STEP 9: GET /api/stock/levels — verify depot stock is now INITIAL_QTY - 30
+        print_step(9, "GET /api/stock/levels — verify depot stock is now INITIAL_QTY - 30")
+        response = requests.get(f"{BASE_URL}/stock/levels", headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
         
         if response.status_code != 200:
-            print_result(False, f"Nomsa login failed: {response.text}")
+            print_result(False, f"Get stock levels failed with status {response.status_code}: {response.text}")
             return False
         
-        data = response.json()
-        token = data.get("token")
-        user = data.get("user", {})
-        name = user.get("name")
+        stock_levels = response.json()
+        current_stock_after_dispatch = None
+        for stock in stock_levels:
+            if stock["product_id"] == product_id:
+                current_stock_after_dispatch = stock["current_quantity"]
+                break
         
-        print_result(True, f"Nomsa login successful - Name: {name}")
-        
-        # Test available companies (should include Fresh Foods SA with Durban route)
-        headers = {"Authorization": f"Bearer {token}"}
-        response = requests.get(f"{BASE_URL}/customer/available-companies", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            companies = response.json()
-            
-            # Look for Fresh Foods SA
-            fresh_foods = None
-            for company in companies:
-                if "Fresh Foods SA" in company.get("name", ""):
-                    fresh_foods = company
-                    break
-            
-            success = fresh_foods is not None
-            if fresh_foods:
-                print_result(success, f"Fresh Foods SA found for Umlazi customer: {fresh_foods.get('product_count', 0)} products")
-            else:
-                print_result(False, "Fresh Foods SA not found for Umlazi customer")
-            
-            return success
-        else:
-            print_result(False, f"Available companies failed for Nomsa: {response.text}")
+        if current_stock_after_dispatch is None:
+            print_result(False, f"No stock found for product {product_name} after dispatch")
             return False
-            
+        
+        expected_after_dispatch = INITIAL_QTY - 30
+        print_step(9, f"Verify depot stock after dispatch", 
+                  expected=f"{expected_after_dispatch} (INITIAL_QTY {INITIAL_QTY} - 30)", 
+                  actual=current_stock_after_dispatch)
+        
+        if current_stock_after_dispatch != expected_after_dispatch:
+            print_result(False, f"Stock after dispatch incorrect. Expected: {expected_after_dispatch}, Actual: {current_stock_after_dispatch}")
+            return False
+        
+        print_result(True, f"✅ CORRECT: Depot stock after dispatch: {current_stock_after_dispatch} (was {INITIAL_QTY}, dispatched 30)")
+        
+        # STEP 10: POST /api/vehicle-stock/return with daily_route_id, items: [{product_id, product_name, quantity: 10}]
+        print_step(10, "POST /api/vehicle-stock/return — return 10 unsold units")
+        return_data = {
+            "daily_route_id": daily_route_id,
+            "items": [
+                {
+                    "product_id": product_id,
+                    "product_name": product_name,
+                    "quantity": 10
+                }
+            ]
+        }
+        
+        response = requests.post(f"{BASE_URL}/vehicle-stock/return", json=return_data, headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code not in [200, 201]:
+            print_result(False, f"Vehicle stock return failed with status {response.status_code}: {response.text}")
+            return False
+        
+        return_response = response.json()
+        print_result(True, f"Returned 10 units of {product_name} from vehicle")
+        
+        # STEP 11: GET /api/stock/levels — verify depot stock is now INITIAL_QTY - 30 + 10 = INITIAL_QTY - 20
+        print_step(11, "GET /api/stock/levels — verify depot stock is now INITIAL_QTY - 30 + 10 = INITIAL_QTY - 20")
+        response = requests.get(f"{BASE_URL}/stock/levels", headers=headers, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code != 200:
+            print_result(False, f"Get stock levels failed with status {response.status_code}: {response.text}")
+            return False
+        
+        stock_levels = response.json()
+        final_stock = None
+        for stock in stock_levels:
+            if stock["product_id"] == product_id:
+                final_stock = stock["current_quantity"]
+                break
+        
+        if final_stock is None:
+            print_result(False, f"No stock found for product {product_name} after return")
+            return False
+        
+        expected_final_stock = INITIAL_QTY - 20  # INITIAL_QTY - 30 + 10
+        print_step(11, f"Verify depot stock after return", 
+                  expected=f"{expected_final_stock} (INITIAL_QTY {INITIAL_QTY} - 30 + 10)", 
+                  actual=final_stock)
+        
+        if final_stock != expected_final_stock:
+            print_result(False, f"❌ CRITICAL FAILURE: Stock after return incorrect. Expected: {expected_final_stock}, Actual: {final_stock}")
+            print(f"❌ The depot quantity did NOT increase by exactly 10 after the return!")
+            print(f"❌ Expected calculation: {INITIAL_QTY} (initial) - 30 (dispatched) + 10 (returned) = {expected_final_stock}")
+            print(f"❌ Actual final stock: {final_stock}")
+            return False
+        
+        print_result(True, f"🎉 SUCCESS: Depot stock after return: {final_stock}")
+        print(f"🎉 CORRECT CALCULATION: {INITIAL_QTY} (initial) - 30 (dispatched) + 10 (returned) = {final_stock}")
+        print(f"🎉 The depot quantity increased by exactly 10 after the return!")
+        
+        # Summary
+        print(f"\n{'='*80}")
+        print("VEHICLE STOCK RETURN FLOW TEST SUMMARY")
+        print('='*80)
+        print(f"Product: {product_name}")
+        print(f"Initial depot quantity: {INITIAL_QTY}")
+        print(f"After dispatch (30 units): {current_stock_after_dispatch}")
+        print(f"After return (10 units): {final_stock}")
+        print(f"Net change: {final_stock - INITIAL_QTY} (expected: -20)")
+        print(f"Return increase: {final_stock - current_stock_after_dispatch} (expected: +10)")
+        print("🎉 VEHICLE STOCK RETURN FUNCTIONALITY WORKING CORRECTLY!")
+        
+        return True
+        
     except Exception as e:
-        print_result(False, f"Second customer test error: {str(e)}")
+        print_result(False, f"Vehicle stock return flow test error: {str(e)}")
         return False
 
 def main():
     """Main test runner"""
     print("="*80)
-    print("MZANSI FMCG TRACKER - NEW MARKETPLACE MODEL ENDPOINTS TESTING")
+    print("VEHICLE STOCK RETURN FUNCTIONALITY TEST")
     print("="*80)
     print(f"Backend URL: {BASE_URL}")
     print(f"Test Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    test_results = []
-    
-    # Test 1: Database Seed
-    success, seed_data = test_database_seed()
-    test_results.append(("Database Seed", success))
-    
-    if not success:
-        print("\n❌ CRITICAL: Database seed failed. Cannot continue with other tests.")
-        sys.exit(1)
-    
-    # Test 2: Admin Login
-    success, admin_token = test_admin_login()
-    test_results.append(("Admin Login", success))
-    
-    if not success:
-        print("\n❌ CRITICAL: Admin login failed. Cannot continue with admin tests.")
-        admin_token = None
-    
-    # Test 3: Location Endpoints
-    success = test_location_endpoints()
-    test_results.append(("Location Endpoints", success))
-    
-    # Test 4: Customer Login
-    success, customer_token = test_customer_login()
-    test_results.append(("Customer Login", success))
-    
-    if not success:
-        print("\n❌ CRITICAL: Customer login failed. Cannot continue with customer tests.")
-        customer_token = None
-    
-    # Test 5 & 6: Customer Marketplace Tests
-    if customer_token:
-        success, companies = test_marketplace_available_companies(customer_token)
-        test_results.append(("Available Companies", success))
-        
-        if success and companies:
-            # Use first company for products test
-            company_id = companies[0]["id"]
-            success, products_data = test_marketplace_company_products(customer_token, company_id)
-            test_results.append(("Company Products", success))
-            
-            # Test 7: Place Order
-            success, order_data = test_marketplace_place_order(customer_token, company_id)
-            test_results.append(("Place Order", success))
-        else:
-            test_results.append(("Company Products", False))
-            test_results.append(("Place Order", False))
-    else:
-        test_results.append(("Available Companies", False))
-        test_results.append(("Company Products", False))
-        test_results.append(("Place Order", False))
-    
-    # Test 8 & 9: Admin Tests (Route Creation and Daily Route Start)
-    if admin_token:
-        success, route_data = test_route_creation_with_location(admin_token)
-        test_results.append(("Route Creation with Location", success))
-        
-        success, daily_route_data = test_start_daily_route(admin_token)
-        test_results.append(("Start Daily Route", success))
-    else:
-        test_results.append(("Route Creation with Location", False))
-        test_results.append(("Start Daily Route", False))
-    
-    # Test 10: Second Customer Test
-    success = test_second_customer_login_and_availability()
-    test_results.append(("Second Customer Test", success))
+    # Run the vehicle stock return flow test
+    success = test_vehicle_stock_return_flow()
     
     # Final Results Summary
     print("\n" + "="*80)
     print("FINAL TEST RESULTS SUMMARY")
     print("="*80)
     
-    passed = sum(1 for _, result in test_results if result)
-    total = len(test_results)
-    
-    for test_name, result in test_results:
-        status = "✅ PASS" if result else "❌ FAIL"
-        print(f"{status}: {test_name}")
-    
-    print(f"\nOVERALL RESULT: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
-    
-    if passed == total:
-        print("🎉 ALL MARKETPLACE MODEL ENDPOINTS WORKING PERFECTLY!")
+    if success:
+        print("✅ PASS: Vehicle Stock Return Flow Test")
+        print("🎉 VEHICLE STOCK RETURN FUNCTIONALITY IS WORKING PERFECTLY!")
+        print("✅ Returned stock from vehicle is correctly added back to depot/warehouse stock")
     else:
-        print(f"⚠️  {total - passed} tests failed - see details above")
+        print("❌ FAIL: Vehicle Stock Return Flow Test")
+        print("❌ VEHICLE STOCK RETURN FUNCTIONALITY HAS ISSUES!")
+        print("❌ Returned stock from vehicle is NOT correctly added back to depot/warehouse stock")
     
     print(f"Test Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    return passed == total
+    return success
 
 if __name__ == "__main__":
     success = main()
