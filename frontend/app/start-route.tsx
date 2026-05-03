@@ -128,6 +128,7 @@ export default function StartRouteScreen() {
   const [inspectionItems, setInspectionItems] = useState<InspectionItem[]>([]);
   const [overallNotes, setOverallNotes] = useState('');
   const [expandedCategory, setExpandedCategory] = useState<string | null>('exterior');
+  const [existingActiveRoute, setExistingActiveRoute] = useState<any>(null);
 
   useEffect(() => {
     loadData();
@@ -155,8 +156,25 @@ export default function StartRouteScreen() {
       ]);
       setRoutes(routesData);
       setVehicles(vehiclesData);
+      
+      // Pre-check: does the driver already have an active route today?
+      try {
+        const activeRoutes = await api.getActiveDailyRoutes();
+        if (activeRoutes && activeRoutes.length > 0) {
+          setExistingActiveRoute(activeRoutes[0]);
+        }
+      } catch (e) {
+        // Ignore - not critical
+        console.log('Could not check active routes:', e);
+      }
     } catch (error) {
       console.error('Error loading data:', error);
+      const msg = 'Could not load routes/vehicles. Please check your connection and try again.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Load Error', msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -172,6 +190,20 @@ export default function StartRouteScreen() {
         }
         return item;
       })
+    );
+  };
+
+  const passAllInCategory = (categoryId: string) => {
+    setInspectionItems((prev) =>
+      prev.map((item) =>
+        item.category === categoryId ? { ...item, passed: true } : item
+      )
+    );
+  };
+
+  const passAllItems = () => {
+    setInspectionItems((prev) =>
+      prev.map((item) => ({ ...item, passed: true }))
     );
   };
 
@@ -265,13 +297,15 @@ export default function StartRouteScreen() {
     }
 
     const summary = getInspectionSummary();
+    
+    // If all items passed or there are failed/unchecked → handle accordingly
     if (summary.unchecked > 0) {
       if (Platform.OS === 'web') {
         const proceed = window.confirm(
           `You have ${summary.unchecked} unchecked items. Do you want to continue anyway?`
         );
         if (proceed) {
-          doStart();
+          await doStart();
         }
       } else {
         Alert.alert(
@@ -279,7 +313,12 @@ export default function StartRouteScreen() {
           `You have ${summary.unchecked} unchecked items. Do you want to continue anyway?`,
           [
             { text: 'Go Back', style: 'cancel' },
-            { text: 'Continue', onPress: () => doStart() },
+            {
+              text: 'Continue',
+              onPress: () => {
+                doStart();
+              },
+            },
           ]
         );
       }
@@ -292,7 +331,7 @@ export default function StartRouteScreen() {
           `${summary.failed} item(s) failed inspection. Are you sure you want to start the route?`
         );
         if (proceed) {
-          doStart();
+          await doStart();
         }
       } else {
         Alert.alert(
@@ -300,26 +339,41 @@ export default function StartRouteScreen() {
           `${summary.failed} item(s) failed inspection. Are you sure you want to start the route?`,
           [
             { text: 'Go Back', style: 'cancel' },
-            { text: 'Start Anyway', style: 'destructive', onPress: () => doStart() },
+            {
+              text: 'Start Anyway',
+              style: 'destructive',
+              onPress: () => {
+                doStart();
+              },
+            },
           ]
         );
       }
       return;
     }
 
-    doStart();
+    // All items passed - start directly
+    await doStart();
   };
 
   const doStart = async () => {
+    if (starting) return; // Prevent double-tap
     setStarting(true);
+    console.log('[StartRoute] Starting route...', {
+      route_id: selectedRoute?.id,
+      vehicle_id: selectedVehicle?.id,
+      opening_km: parseFloat(openingKm),
+      crates_out: parseInt(cratesOut) || 0,
+    });
     try {
-      await api.startDailyRoute({
+      const result = await api.startDailyRoute({
         route_id: selectedRoute!.id,
         vehicle_id: selectedVehicle!.id,
         opening_km: parseFloat(openingKm),
         crates_out: parseInt(cratesOut) || 0,
         vehicle_check: buildVehicleCheck(),
       });
+      console.log('[StartRoute] Route started successfully:', result?.id || result);
       if (Platform.OS === 'web') {
         window.alert('Route started successfully!');
         router.back();
@@ -331,11 +385,29 @@ export default function StartRouteScreen() {
         );
       }
     } catch (error: any) {
-      const msg = error.response?.data?.detail || 'Failed to start route. Please try again.';
-      if (Platform.OS === 'web') {
-        window.alert('Error: ' + msg);
+      console.error('[StartRoute] Error starting route:', error?.response?.status, error?.response?.data);
+      const detail = error?.response?.data?.detail || '';
+      
+      // If route is already active, treat as partial success
+      if (detail.toLowerCase().includes('already active') || detail.toLowerCase().includes('already in use')) {
+        console.log('[StartRoute] Route/vehicle already active - treating as success');
+        if (Platform.OS === 'web') {
+          window.alert('Your route is already active! Returning to dashboard.');
+          router.back();
+        } else {
+          Alert.alert(
+            'Route Already Active',
+            'This route is already active today. Returning to dashboard.',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+        }
       } else {
-        Alert.alert('Error Starting Route', msg);
+        const msg = detail || 'Failed to start route. Please try again.';
+        if (Platform.OS === 'web') {
+          window.alert('Error: ' + msg);
+        } else {
+          Alert.alert('Error Starting Route', msg);
+        }
       }
     } finally {
       setStarting(false);
@@ -372,6 +444,27 @@ export default function StartRouteScreen() {
         </View>
 
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          {/* Active Route Banner */}
+          {existingActiveRoute && (
+            <View style={styles.activeRouteBanner}>
+              <View style={styles.activeRouteBannerIcon}>
+                <Ionicons name="information-circle" size={24} color="#F59E0B" />
+              </View>
+              <View style={styles.activeRouteBannerContent}>
+                <Text style={styles.activeRouteBannerTitle}>Route Already Active</Text>
+                <Text style={styles.activeRouteBannerText}>
+                  {existingActiveRoute.route_name} is active with {existingActiveRoute.vehicle_name || 'a vehicle'}.
+                </Text>
+                <TouchableOpacity
+                  style={styles.activeRouteBannerBtn}
+                  onPress={() => router.back()}
+                >
+                  <Text style={styles.activeRouteBannerBtnText}>Go to Dashboard</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* Route Selection */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Select Route</Text>
@@ -528,6 +621,17 @@ export default function StartRouteScreen() {
               </View>
             </View>
 
+            {/* Global Pass All Button */}
+            {inspectionSummary.unchecked > 0 && (
+              <TouchableOpacity
+                style={styles.passAllGlobalBtn}
+                onPress={passAllItems}
+              >
+                <Ionicons name="checkmark-done" size={18} color="#FFFFFF" />
+                <Text style={styles.passAllGlobalText}>Pass All Items</Text>
+              </TouchableOpacity>
+            )}
+
             {/* Progress bar */}
             <View style={styles.progressBar}>
               <View
@@ -581,6 +685,16 @@ export default function StartRouteScreen() {
 
                   {isExpanded && (
                     <View style={styles.categoryItems}>
+                      {/* Per-category Pass All button */}
+                      {stats.passed < stats.total && (
+                        <TouchableOpacity
+                          style={styles.passAllCategoryBtn}
+                          onPress={() => passAllInCategory(category.id)}
+                        >
+                          <Ionicons name="checkmark-done" size={14} color="#10B981" />
+                          <Text style={styles.passAllCategoryText}>Pass All in {category.title}</Text>
+                        </TouchableOpacity>
+                      )}
                       {catItems.map((item) => (
                         <View key={item.id} style={styles.inspectionItemWrap}>
                           <View style={styles.inspectionItemRow}>
@@ -845,4 +959,31 @@ const styles = StyleSheet.create({
   },
   startButtonDisabled: { opacity: 0.5 },
   startButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
+
+  // Active Route Banner
+  activeRouteBanner: {
+    flexDirection: 'row', backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.3)',
+  },
+  activeRouteBannerIcon: { marginRight: 12, marginTop: 2 },
+  activeRouteBannerContent: { flex: 1 },
+  activeRouteBannerTitle: { fontSize: 15, fontWeight: '600', color: '#F59E0B', marginBottom: 4 },
+  activeRouteBannerText: { fontSize: 13, color: '#94A3B8', marginBottom: 8 },
+  activeRouteBannerBtn: {
+    backgroundColor: '#F59E0B', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  activeRouteBannerBtnText: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
+
+  // Pass All Buttons
+  passAllGlobalBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#10B981', borderRadius: 10, paddingVertical: 12, marginBottom: 16,
+  },
+  passAllGlobalText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
+  passAllCategoryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8,
+    paddingHorizontal: 4, marginBottom: 4,
+  },
+  passAllCategoryText: { fontSize: 12, fontWeight: '500', color: '#10B981' },
 });

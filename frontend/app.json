@@ -22,7 +22,10 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.mzafri.tracker",
-      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -45,7 +48,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#0F172A"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

@@ -1341,6 +1341,7 @@ async def get_customer_sales(customer_id: str):
 @api_router.post("/daily-routes/start", response_model=DailyRouteResponse)
 async def start_daily_route(data: DailyRouteStart, current_user: dict = Depends(get_current_user)):
     today = datetime.utcnow().strftime("%Y-%m-%d")
+    company_id = current_user.get("company_id", "")
     
     # Check if THIS SPECIFIC ROUTE is already active today for this driver
     existing = await db.daily_routes.find_one({
@@ -1352,21 +1353,22 @@ async def start_daily_route(data: DailyRouteStart, current_user: dict = Depends(
     if existing:
         raise HTTPException(status_code=400, detail="This route is already active today")
     
-    # Check if this vehicle is already in use
-    # Check if this route is already active today
+    # Check if this route is already active today (within the same company)
     route_already_active = await db.daily_routes.find_one({
         "route_id": data.route_id,
         "date": today,
-        "status": "active"
+        "status": "active",
+        "company_id": company_id
     })
     if route_already_active:
         raise HTTPException(status_code=400, detail=f"This route is already active today. End the current run first.")
     
-    # Check vehicle availability
+    # Check vehicle availability (within the same company)
     vehicle_in_use = await db.daily_routes.find_one({
         "vehicle_id": data.vehicle_id,
         "date": today,
-        "status": "active"
+        "status": "active",
+        "company_id": company_id
     })
     if vehicle_in_use:
         raise HTTPException(status_code=400, detail="This vehicle is already in use on another route today")
@@ -1480,9 +1482,12 @@ async def get_active_daily_routes(current_user: dict = Depends(get_current_user)
         "status": "active"
     }
     
-    # Drivers see only their own routes, admin/manager see all
+    # Drivers see only their own routes, admin/manager see their company's routes
     if current_user["role"] not in ["admin", "manager"]:
         query["driver_id"] = current_user["id"]
+    else:
+        cf = get_company_filter(current_user)
+        query.update(cf)
     
     daily_routes = await db.daily_routes.find(query).to_list(50)
     return [str_id(dr) for dr in daily_routes]
@@ -1494,10 +1499,13 @@ async def get_all_active_routes(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
     
     today = datetime.utcnow().strftime("%Y-%m-%d")
-    daily_routes = await db.daily_routes.find({
+    query = {
         "date": today,
         "status": "active"
-    }).to_list(100)
+    }
+    cf = get_company_filter(current_user)
+    query.update(cf)
+    daily_routes = await db.daily_routes.find(query).to_list(100)
     return [str_id(dr) for dr in daily_routes]
 
 @api_router.get("/daily-routes/history", response_model=List[DailyRouteResponse])
@@ -4958,10 +4966,10 @@ async def browse_collection(
         raise HTTPException(status_code=404, detail="Collection not found")
     
     query = {}
-    if company_filter and collection_name not in ["companies"]:
+    # Always enforce company isolation (except for 'companies' collection which only shows names)
+    if collection_name not in ["companies"]:
         cf = get_company_filter(current_user)
-        if cf:
-            query.update(cf)
+        query.update(cf)
     
     total = await db[collection_name].count_documents(query)
     docs = await db[collection_name].find(query).sort("_id", -1).skip(skip).limit(limit).to_list(limit)
@@ -4985,6 +4993,10 @@ async def get_document(collection_name: str, doc_id: str, current_user: dict = D
     
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Verify document belongs to user's company
+    if collection_name not in ["companies"]:
+        verify_company_ownership(doc, current_user)
     
     return serialize_doc(doc)
 
