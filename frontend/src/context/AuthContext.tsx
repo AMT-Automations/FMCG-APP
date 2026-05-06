@@ -36,34 +36,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadStoredAuth();
-
-    // Auto-logout on 401 (stale/invalid token)
-    const interceptorId = api.client.interceptors.response.use(
-      (response: any) => response,
-      async (error: any) => {
-        if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
-          // Token is invalid - clear everything and force re-login
-          setUser(null);
-          setToken(null);
-          api.setToken(null);
-          try {
-            await AsyncStorage.multiRemove(['auth_token', 'auth_user']);
-          } catch (e) {}
-        }
-        return Promise.reject(error);
-      }
-    );
-
-    return () => {
-      api.client.interceptors.response.eject(interceptorId);
-    };
   }, []);
 
   const loadStoredAuth = async () => {
     try {
       const storedToken = await AsyncStorage.getItem('auth_token');
       const storedUser = await AsyncStorage.getItem('auth_user');
-      
       if (storedToken && storedUser) {
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
@@ -80,26 +58,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await api.login(phone, pin);
       const { token: newToken, user: newUser } = response;
-      
       await AsyncStorage.setItem('auth_token', newToken);
       await AsyncStorage.setItem('auth_user', JSON.stringify(newUser));
-      
       api.setToken(newToken);
       setToken(newToken);
       setUser(newUser);
       return newUser;
     } catch (error: any) {
-      throw new Error(error.response?.data?.detail || 'Login failed');
+      throw new Error(error.response?.data?.detail || error.message || 'Login failed');
     }
   };
 
   const register = async (name: string, phone: string, pin: string, role: string = 'driver') => {
     try {
       await api.register(name, phone, pin, role);
-      // Auto login after registration
       await login(phone, pin);
     } catch (error: any) {
-      throw new Error(error.response?.data?.detail || 'Registration failed');
+      throw new Error(error.response?.data?.detail || error.message || 'Registration failed');
     }
   };
 

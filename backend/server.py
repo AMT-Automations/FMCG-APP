@@ -48,11 +48,31 @@ db = client[db_name]
 # Create the main app
 app = FastAPI(title="Mzansi FMCG Tracker API")
 
+# CORS Configuration - Allow frontend to access API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8081",
+        "http://localhost:3000",
+        "http://127.0.0.1:8081",
+        "http://127.0.0.1:3000",
+        "*"
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
 # Security
 security = HTTPBearer(auto_error=False)
+
+# NOTE: app.include_router(api_router) is called at the bottom of this file
+
+# Register router (must be done after all routes are defined — see bottom of file)
 
 # Configure logging
 logging.basicConfig(
@@ -478,14 +498,22 @@ async def register_user(user: UserCreate):
 
 @api_router.post("/auth/login", response_model=LoginResponse)
 async def login(req: LoginRequest):
-    user = await db.users.find_one({"phone": req.phone})
+    # Trim whitespace from phone number
+    phone = req.phone.strip()
+    
+    logger.info(f"Login attempt for phone: {phone}")
+    
+    user = await db.users.find_one({"phone": phone})
     if not user:
+        logger.warning(f"User not found for phone: {phone}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     if not user.get("is_active", True):
+        logger.warning(f"Inactive account for phone: {phone}")
         raise HTTPException(status_code=401, detail="Account is deactivated")
     
     if user["pin_hash"] != hash_pin(req.pin):
+        logger.warning(f"Invalid PIN for phone: {phone}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     token = create_token(str(user["_id"]), user["role"])
@@ -493,9 +521,14 @@ async def login(req: LoginRequest):
     # Include company info in response
     company_info = None
     if user.get("company_id"):
-        company = await db.companies.find_one({"_id": ObjectId(user["company_id"])})
-        if company:
-            company_info = str_id(company)
+        try:
+            company = await db.companies.find_one({"_id": ObjectId(user["company_id"])})
+            if company:
+                company_info = str_id(company)
+        except Exception as e:
+            logger.error(f"Error fetching company: {e}")
+    
+    logger.info(f"Login successful for phone: {phone}, role: {user.get('role')}")
     
     return {
         "token": token,
@@ -2245,7 +2278,23 @@ async def seed_all_data():
         }
     }
 
-# Health check
+# Register all routes
+app.include_router(api_router)
+
+# Health check endpoint
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "Mzansi FMCG Tracker API is running"}
+
+@app.get("/health")
+async def health_check():
+    try:
+        # Test database connection
+        await client.admin.command('ping')
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+
 # ==================== EMAIL REPORT ENDPOINTS ====================
 
 class EmailReportRequest(BaseModel):
