@@ -38,12 +38,25 @@ if not JWT_SECRET:
 JWT_ALGORITHM = "HS256"
 
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017/fmcg_tracker')
 client = AsyncIOMotorClient(mongo_url)
+
+# Extract DB name: prefer explicit DB_NAME env, then parse from MONGO_URL, then fallback
 db_name = os.environ.get('DB_NAME')
 if not db_name:
-    raise RuntimeError("DB_NAME environment variable must be set")
+    # Try to extract database name from MONGO_URL path
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(mongo_url.replace('mongodb+srv://', 'https://').replace('mongodb://', 'http://'))
+        path_db = parsed.path.strip('/')
+        if path_db and '?' not in path_db:
+            db_name = path_db.split('?')[0]
+    except Exception:
+        pass
+if not db_name:
+    db_name = 'fmcg_tracker'
 db = client[db_name]
+logging.info(f"Connected to MongoDB database: {db_name}")
 
 # Create the main app
 app = FastAPI(title="Mzansi FMCG Tracker API")
