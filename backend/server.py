@@ -2291,8 +2291,7 @@ async def seed_all_data():
         }
     }
 
-# Register all routes
-app.include_router(api_router)
+# NOTE: Routes are registered via app.include_router at end of file
 
 # Health check endpoint
 @app.get("/")
@@ -5102,6 +5101,18 @@ async def delete_document(collection_name: str, doc_id: str, current_user: dict 
         raise HTTPException(status_code=404, detail="Document not found")
     
     return {"message": "Document deleted", "collection": collection_name, "id": doc_id}
+
+@api_router.get("/download-source")
+async def download_source():
+    """Serve the source code zip for export."""
+    zip_path = Path("/app/source_export.zip")
+    if not zip_path.exists():
+        raise HTTPException(status_code=404, detail="Source archive not found. Generate it first.")
+    return Response(
+        content=zip_path.read_bytes(),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=source_export.zip"}
+    )
 
 # Include the router in the main app
 app.include_router(api_router)
