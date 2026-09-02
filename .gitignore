@@ -81,3 +81,9 @@ android-sdk/
 
 APPLICATION_STATUS.md
 CHAT_HISTORY.md
+.env
+.env.*
+*.env
+credentials.json
+*.key
+.credentials
